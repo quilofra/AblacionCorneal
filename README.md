@@ -123,7 +123,7 @@ pytest -q
 
 Workflows incluidos:
 
-- `CI`: valida tests del core, desktop y web.
+- `CI`: ejecuta `pytest -q` sobre el core compartido y la API web.
 - `Release macOS App`: genera la app descargable con PyInstaller al publicar un tag `v*`.
 
 La publicación automática de la web no está activada desde GitHub Actions porque falta la autenticación del proveedor de despliegue. La ruta de despliegue queda preparada con `render.yaml`.
