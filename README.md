@@ -1,45 +1,60 @@
 # AblacionCorneal
 
-Aplicación de escritorio en Python con PySide6 para evaluar criterios de seguridad en planificación de ablación corneal. Calcula porcentaje de ablación, lecho estromal residual, paquimetría postoperatoria, factor limitante y margen de seguridad.
+Repositorio dual para una calculadora clínica de seguridad en ablación corneal:
 
-## Tipo de proyecto
+- app de escritorio en Python + PySide6
+- app web en FastAPI + frontend ligero en navegador
 
-- App de escritorio Python
-- Interfaz nativa con PySide6
-- No es una web estática
-- No es apta para GitHub Pages
+Ambas vías reutilizan el mismo core clínico en `shared/`.
 
-## Estado de publicación recomendado
+## Usar online
 
-Este proyecto debe publicarse como repositorio en GitHub y distribuirse como binario descargable mediante GitHub Releases. La app actual no se puede desplegar directamente como sitio web porque su interfaz es de escritorio.
+La versión web vive en `web_app/` y expone una calculadora real en navegador, no una landing estática.
 
-## Requisitos
-
-- Python 3.12 recomendado
-- macOS para generar `AblacionCorneal.app`
-
-## Instalación local
+### Ejecutar localmente
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+./scripts/run_web.sh
 ```
 
-## Ejecutar en local
+Después abre:
+
+```text
+http://127.0.0.1:8000
+```
+
+### Publicar la web
+
+La ruta recomendada es Render, porque la web necesita backend Python para reutilizar el core compartido.
+
+Archivos ya preparados:
+
+- `render.yaml`
+- `runtime.txt`
+- `.env.example`
+
+Variables opcionales para enlaces públicos:
+
+- `GITHUB_REPO_URL`
+- `DESKTOP_DOWNLOAD_URL`
+
+URL esperada una vez desplegado en Render:
+
+```text
+https://<tu-servicio>.onrender.com
+```
+
+## Descargar app
+
+La app nativa de escritorio sigue siendo el cliente principal para macOS.
+
+### Ejecutar localmente
 
 ```bash
 python3 main.py
 ```
 
-## Tests
-
-```bash
-pytest -q
-```
-
-## Build local para macOS
+### Generar build descargable
 
 ```bash
 ./scripts/build_mac.sh
@@ -50,37 +65,97 @@ Salida esperada:
 - `dist/AblacionCorneal.app`
 - `dist/AblacionCorneal-macOS.zip`
 
-## Publicación en GitHub
+### Publicar la app descargable
 
-### Opción recomendada
+La distribución se hace con GitHub Releases.
 
-1. Sube el repositorio a GitHub.
-2. Haz push a `main` para ejecutar la CI.
-3. Crea un tag de versión, por ejemplo `v1.0.0`.
-4. Haz push del tag.
-5. GitHub Actions generará `AblacionCorneal-macOS.zip` y lo subirá a una Release.
+1. Haz push a `main`.
+2. Crea un tag como `v1.0.0`.
+3. Haz push del tag.
+4. El workflow de release generará el zip de macOS y lo subirá a la release.
 
-### Workflow incluido
+## Arquitectura
 
-- `CI`: ejecuta tests en cada push y pull request.
-- `Release macOS App`: genera la app de macOS cuando subes un tag `v*`.
+```text
+.
+├── .github/workflows/
+├── assets/
+├── desktop_app/
+├── shared/
+├── web_app/
+│   └── static/
+├── scripts/
+├── tests/
+├── AGENTS.md
+├── AblacionCorneal.spec
+├── LICENSE
+├── main.py
+├── pytest.ini
+├── README.md
+├── render.yaml
+├── requirements.txt
+└── runtime.txt
+```
+
+## Qué hay en cada parte
+
+- `shared/`: reglas clínicas y cálculo reutilizable.
+- `desktop_app/`: interfaz PySide6.
+- `web_app/`: servidor FastAPI y frontend navegador.
+- `main.py`: entrypoint compatible para seguir lanzando la app desktop desde raíz.
+
+## Instalación local
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+## Tests
+
+```bash
+pytest -q
+```
+
+## CI/CD
+
+Workflows incluidos:
+
+- `CI`: valida tests del core, desktop y web.
+- `Release macOS App`: genera la app descargable con PyInstaller al publicar un tag `v*`.
+
+La publicación automática de la web no está activada desde GitHub Actions porque falta la autenticación del proveedor de despliegue. La ruta de despliegue queda preparada con `render.yaml`.
+
+## Variables de entorno
+
+El proyecto no necesita variables para funcionar localmente, pero la web puede usarlas para mostrar enlaces públicos:
+
+```bash
+cp .env.example .env
+```
+
+Valores disponibles:
+
+- `GITHUB_REPO_URL`
+- `DESKTOP_DOWNLOAD_URL`
 
 ## Archivos que sí deben versionarse
 
-- `main.py`
-- `calculator.py`
-- `styles.py`
-- `requirements.txt`
-- `pytest.ini`
-- `README.md`
-- `LICENSE`
+- `desktop_app/`
+- `shared/`
+- `web_app/`
+- `assets/`
+- `tests/`
+- `.github/workflows/`
 - `AblacionCorneal.spec`
-- `scripts/build_mac.sh`
-- `assets/app_icon.png`
-- `assets/app_icon.svg`
-- `tests/test_calculator.py`
-- `.github/workflows/ci.yml`
-- `.github/workflows/release-macos.yml`
+- `render.yaml`
+- `runtime.txt`
+- `README.md`
+- `.gitignore`
+- `LICENSE`
+- `AGENTS.md`
 
 ## Archivos que no deben versionarse
 
@@ -89,41 +164,15 @@ Salida esperada:
 - `dist/`
 - `__pycache__/`
 - `.pytest_cache/`
-- `.DS_Store`
 - `.env`
-- `.env.*`
-- `.idea/`
-- `.vscode/`
+- `.DS_Store`
 
-## Variables de entorno
+## Roadmap breve
 
-Actualmente el proyecto no usa variables de entorno ni requiere `.env`.
-
-## Estructura del proyecto
-
-```text
-.
-├── .github/workflows/
-├── assets/
-├── scripts/
-├── tests/
-├── AblacionCorneal.spec
-├── calculator.py
-├── LICENSE
-├── main.py
-├── pytest.ini
-├── README.md
-├── requirements.txt
-└── styles.py
-```
-
-## Posibles problemas habituales
-
-- `python3: command not found`: instala Python 3.12 o ajusta el ejecutable disponible.
-- `PySide6` no compila o falla al instalar: actualiza `pip` y recrea el entorno virtual.
-- `PyInstaller` genera una app pero macOS la bloquea: abre la app manualmente o firma/notariza si vas a distribuirla ampliamente.
-- El workflow de release no se ejecuta: comprueba que el tag empiece por `v`, por ejemplo `v1.0.0`.
+- añadir descarga pública enlazada automáticamente al repositorio remoto real
+- ampliar tests de UI web
+- notarizar la app de macOS si se va a distribuir fuera de GitHub
 
 ## Disclaimer
 
-Herramienta de apoyo clínico. No sustituye el criterio médico.
+Herramienta de apoyo clínico. No sustituye el criterio médico ni la decisión asistencial.

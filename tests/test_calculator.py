@@ -1,6 +1,6 @@
 import pytest
 
-from calculator import EyeInput, compute_result
+from shared.calculator import EyeInput, compute_result
 
 
 def test_basic_surface_pass():

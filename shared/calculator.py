@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 MAX_ABLATION_PCT = 20.0
@@ -67,6 +67,10 @@ class EyeResult:
     tissue_label: str = "Flap/Cap"
     flap_cap_um: int = 0
     legacy_mode: bool = False
+
+
+def eye_result_to_dict(result: EyeResult) -> dict[str, object]:
+    return asdict(result)
 
 
 def _status_from_margin(ok: bool, margin_um: float | None, margin_pct: float | None) -> RuleStatus:
