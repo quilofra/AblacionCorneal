@@ -52,4 +52,5 @@ def test_index_serves_web_app():
 
     assert response.status_code == 200
     assert "AblacionCorneal" in response.text
-    assert "Usar online" in response.text
+    assert "Calculadora clínica" in response.text
+    assert "Descargar app Mac" in response.text

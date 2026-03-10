@@ -23,15 +23,18 @@ const elements = {
   segmentAblation: document.querySelector("#segment-ablation"),
   segmentResidual: document.querySelector("#segment-residual"),
   copySummaryButton: document.querySelector("#copy-summary-button"),
+  infoButton: document.querySelector("#info-button"),
+  infoModal: document.querySelector("#info-modal"),
+  infoBackdrop: document.querySelector("#info-backdrop"),
+  infoCloseButton: document.querySelector("#info-close-button"),
+  desktopNoteText: document.querySelector("#desktop-note-text"),
   downloadLinks: [
     document.querySelector("#download-link"),
-    document.querySelector("#download-link-secondary"),
+    document.querySelector("#download-link-inline"),
   ],
   repoLinks: [
     document.querySelector("#repo-link"),
-    document.querySelector("#repo-link-secondary"),
   ],
-  downloadHelp: document.querySelector("#download-help"),
   metricValues: {
     ablation: document.querySelector("#ablation-pct-value"),
     lerUm: document.querySelector("#ler-um-value"),
@@ -68,6 +71,29 @@ function setLinkState(link, href) {
   }
 }
 
+function openInfoModal() {
+  elements.infoModal.classList.remove("is-hidden");
+  elements.infoModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+}
+
+function closeInfoModal() {
+  elements.infoModal.classList.add("is-hidden");
+  elements.infoModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
+
+function bindInfoModal() {
+  elements.infoButton.addEventListener("click", openInfoModal);
+  elements.infoBackdrop.addEventListener("click", closeInfoModal);
+  elements.infoCloseButton.addEventListener("click", closeInfoModal);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !elements.infoModal.classList.contains("is-hidden")) {
+      closeInfoModal();
+    }
+  });
+}
+
 function currentProcedure() {
   return elements.procedureSelect.value || "surface";
 }
@@ -94,7 +120,7 @@ function updateConfigurationUI() {
 
   if (isLegacy) {
     elements.settingsHint.textContent =
-      "Modo legacy activo: la web replica el cálculo histórico e ignora flap/cap.";
+      "Modo legacy activo: replica el cálculo histórico e ignora flap/cap.";
   } else if (procedure !== "surface") {
     elements.settingsHint.textContent =
       `Se descontará ${label.toLowerCase()} para calcular el lecho residual.`;
@@ -168,8 +194,8 @@ function buildSummary(result, paqui, ablation) {
     result.overall_status === "ok"
       ? "Cumple"
       : result.overall_status === "warning"
-      ? "Cerca"
-      : "No cumple";
+        ? "Cerca"
+        : "No cumple";
 
   return `${result.procedure_label}, paqui preop ${paqui} µm, ablación ${ablation} µm (${result.ablation_pct.toFixed(1)}%), LER ${result.ler_um} µm (${result.ler_pct.toFixed(1)}%), post-op ${result.postop_paqui_um} µm, ${result.tissue_label.toLowerCase()} efectivo ${result.subtract_um} µm, legacy ${result.legacy_mode ? "sí" : "no"}, estado ${statusLabel}, limita ${result.limit_factor}, máx segura ${result.ablation_max_safe_um} µm, margen ${result.margin_um >= 0 ? "+" : ""}${result.margin_um} µm.`;
 }
@@ -278,6 +304,12 @@ async function compute() {
   };
 }
 
+function updateDesktopNote(downloadUrl) {
+  elements.desktopNoteText.textContent = downloadUrl
+    ? "También disponible como app nativa para macOS."
+    : "La app nativa para macOS se publicará desde GitHub Releases cuando exista enlace público.";
+}
+
 async function bootstrap() {
   const configResponse = await fetch("/api/config");
   state.config = await configResponse.json();
@@ -294,9 +326,7 @@ async function bootstrap() {
 
   elements.repoLinks.forEach((link) => setLinkState(link, repoUrl));
   elements.downloadLinks.forEach((link) => setLinkState(link, downloadUrl));
-  elements.downloadHelp.textContent = downloadUrl
-    ? "La descarga apunta a la release pública configurada para la app de escritorio."
-    : "Define DESKTOP_DOWNLOAD_URL o GITHUB_REPO_URL para activar la descarga pública de la app.";
+  updateDesktopNote(downloadUrl);
 
   [
     elements.procedureSelect,
@@ -316,6 +346,7 @@ async function bootstrap() {
     });
   });
 
+  bindInfoModal();
   updateConfigurationUI();
   resetResults();
 }

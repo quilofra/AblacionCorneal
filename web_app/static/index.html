@@ -12,55 +12,41 @@
     <link rel="stylesheet" href="/static/app.css">
   </head>
   <body>
-    <div class="page-shell">
+    <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#app">
+        <a class="brand" href="/">
           <img src="/assets/app_icon.svg" alt="" class="brand-mark">
           <span class="brand-copy">
             <strong>AblacionCorneal</strong>
-            <span>Calculadora clínica en navegador</span>
+            <span>Calculadora clínica online</span>
           </span>
         </a>
+
         <div class="topbar-actions">
+          <button class="ghost-button" id="info-button" type="button">Info</button>
           <a class="ghost-button" id="repo-link" href="#" target="_blank" rel="noreferrer">Repositorio</a>
-          <a class="primary-button" id="download-link" href="#" target="_blank" rel="noreferrer">Descargar app</a>
+          <a class="primary-button" id="download-link" href="#" target="_blank" rel="noreferrer">
+            Descargar app Mac
+          </a>
         </div>
       </header>
 
-      <main class="layout">
-        <section class="hero">
-          <div class="hero-copy">
-            <span class="eyebrow">Usar online</span>
-            <h1>Versión web real, conectada al mismo core clínico que la app de escritorio.</h1>
-            <p>
-              Esta interfaz web reutiliza la lógica de cálculo Python del proyecto y mantiene la
-              misma interpretación de márgenes, límites y modo legacy.
-            </p>
-            <div class="hero-cta">
-              <a class="primary-button" href="#calculator">Abrir calculadora</a>
-              <a class="ghost-button" href="#desktop-download">Ir a descarga</a>
-            </div>
+      <main class="workspace" id="app">
+        <section class="workspace-header">
+          <div>
+            <span class="eyebrow">Uso online</span>
+            <h1>Calculadora clínica</h1>
           </div>
-          <aside class="hero-panel">
-            <span class="panel-label">Disponible</span>
-            <div class="availability">
-              <div>
-                <strong>En navegador</strong>
-                <span>Sin instalar nada</span>
-              </div>
-              <div>
-                <strong>En macOS</strong>
-                <span>App descargable</span>
-              </div>
-            </div>
-          </aside>
+          <p class="workspace-hint">
+            Introduce los datos del caso y la evaluación se actualiza al momento.
+          </p>
         </section>
 
-        <section class="calculator" id="calculator">
+        <section class="calculator">
           <div class="panel input-panel">
-            <div class="panel-header">
+            <div class="section-heading">
               <span class="eyebrow">Configuración</span>
-              <h2>Parámetros clínicos</h2>
+              <h2>Parámetros del cálculo</h2>
             </div>
 
             <div class="field-grid">
@@ -82,9 +68,9 @@
 
             <p class="settings-hint" id="settings-hint"></p>
 
-            <div class="panel-header panel-header--spaced">
-              <span class="eyebrow">Entrada</span>
-              <h2>Datos del caso</h2>
+            <div class="section-heading section-heading--split">
+              <span class="eyebrow">Caso</span>
+              <h2>Entrada clínica</h2>
             </div>
 
             <div class="field-grid">
@@ -108,118 +94,139 @@
             <p class="inline-error" id="error-text"></p>
           </div>
 
-          <div class="panel results-panel" id="app">
-            <div class="results-header">
-              <div>
-                <span class="eyebrow">Resultado</span>
-                <h2>Evaluación actual</h2>
-              </div>
-              <span class="status-badge" id="status-badge">No válido</span>
-            </div>
-
-            <div class="metrics-grid">
-              <article class="metric-chip" data-metric="ablation">
-                <span>Ablación %</span>
-                <strong id="ablation-pct-value">–</strong>
-              </article>
-              <article class="metric-chip" data-metric="ler-um">
-                <span>LER (µm)</span>
-                <strong id="ler-um-value">–</strong>
-              </article>
-              <article class="metric-chip" data-metric="ler-pct">
-                <span>LER %</span>
-                <strong id="ler-pct-value">–</strong>
-              </article>
-              <article class="metric-chip" data-metric="postop">
-                <span>Post-op (µm)</span>
-                <strong id="postop-value">–</strong>
-              </article>
-            </div>
-
-            <div class="decision-card">
-              <div class="decision-head">
+          <div class="results-stack">
+            <div class="panel results-panel">
+              <div class="results-header">
                 <div>
-                  <span class="eyebrow">Decisión</span>
-                  <h3 id="max-safe-text">Máx ablación segura: –</h3>
+                  <span class="eyebrow">Resultado</span>
+                  <h2>Evaluación actual</h2>
                 </div>
-                <button class="ghost-button ghost-button--small" id="copy-summary-button" type="button">
-                  Copiar resumen
-                </button>
+                <span class="status-badge" id="status-badge">No válido</span>
               </div>
-              <p id="margin-text">Margen: –</p>
-              <p id="limit-text">Limita: –</p>
-              <div class="segmented-bar">
-                <span id="segment-flap"></span>
-                <span id="segment-ablation"></span>
-                <span id="segment-residual"></span>
+
+              <div class="metrics-grid">
+                <article class="metric-chip" data-metric="ablation">
+                  <span>Ablación %</span>
+                  <strong id="ablation-pct-value">–</strong>
+                </article>
+                <article class="metric-chip" data-metric="ler-um">
+                  <span>LER (µm)</span>
+                  <strong id="ler-um-value">–</strong>
+                </article>
+                <article class="metric-chip" data-metric="ler-pct">
+                  <span>LER %</span>
+                  <strong id="ler-pct-value">–</strong>
+                </article>
+                <article class="metric-chip" data-metric="postop">
+                  <span>Post-op (µm)</span>
+                  <strong id="postop-value">–</strong>
+                </article>
               </div>
-              <p class="inline-hint" id="segment-labels">Flap/Cap 0 µm · Ablación 0 µm · Residual 0 µm</p>
+
+              <div class="decision-card">
+                <div class="decision-head">
+                  <div>
+                    <span class="eyebrow">Decisión</span>
+                    <h3 id="max-safe-text">Máx ablación segura: –</h3>
+                  </div>
+                  <button class="ghost-button ghost-button--small" id="copy-summary-button" type="button">
+                    Copiar resumen
+                  </button>
+                </div>
+                <p id="margin-text">Margen: –</p>
+                <p id="limit-text">Limita: –</p>
+                <div class="segmented-bar">
+                  <span id="segment-flap"></span>
+                  <span id="segment-ablation"></span>
+                  <span id="segment-residual"></span>
+                </div>
+                <p class="inline-hint" id="segment-labels">Flap/Cap 0 µm · Ablación 0 µm · Residual 0 µm</p>
+              </div>
+
+              <div class="rules-card">
+                <div class="section-heading section-heading--compact">
+                  <span class="eyebrow">Detalle</span>
+                  <h3>Reglas evaluadas</h3>
+                </div>
+                <div class="rules-list">
+                  <article class="rule-row" id="rule-ablation">
+                    <span class="rule-icon">–</span>
+                    <div>
+                      <strong>Ablación ≤ 20%</strong>
+                      <span class="rule-threshold"></span>
+                    </div>
+                    <span class="rule-value">–</span>
+                  </article>
+                  <article class="rule-row" id="rule-ler-um">
+                    <span class="rule-icon">–</span>
+                    <div>
+                      <strong>LER ≥ 300 µm</strong>
+                      <span class="rule-threshold"></span>
+                    </div>
+                    <span class="rule-value">–</span>
+                  </article>
+                  <article class="rule-row" id="rule-ler-pct">
+                    <span class="rule-icon">–</span>
+                    <div>
+                      <strong>LER %</strong>
+                      <span class="rule-threshold"></span>
+                    </div>
+                    <span class="rule-value">–</span>
+                  </article>
+                  <article class="rule-row" id="rule-postop">
+                    <span class="rule-icon">–</span>
+                    <div>
+                      <strong>Post-op ≥ 400 µm</strong>
+                      <span class="rule-threshold"></span>
+                    </div>
+                    <span class="rule-value">–</span>
+                  </article>
+                </div>
+              </div>
             </div>
 
-            <div class="rules-card">
-              <div class="panel-header">
-                <span class="eyebrow">Detalle</span>
-                <h3>Reglas evaluadas</h3>
-              </div>
-              <div class="rules-list">
-                <article class="rule-row" id="rule-ablation">
-                  <span class="rule-icon">–</span>
-                  <div>
-                    <strong>Ablación ≤ 20%</strong>
-                    <span class="rule-threshold"></span>
-                  </div>
-                  <span class="rule-value">–</span>
-                </article>
-                <article class="rule-row" id="rule-ler-um">
-                  <span class="rule-icon">–</span>
-                  <div>
-                    <strong>LER ≥ 300 µm</strong>
-                    <span class="rule-threshold"></span>
-                  </div>
-                  <span class="rule-value">–</span>
-                </article>
-                <article class="rule-row" id="rule-ler-pct">
-                  <span class="rule-icon">–</span>
-                  <div>
-                    <strong>LER %</strong>
-                    <span class="rule-threshold"></span>
-                  </div>
-                  <span class="rule-value">–</span>
-                </article>
-                <article class="rule-row" id="rule-postop">
-                  <span class="rule-icon">–</span>
-                  <div>
-                    <strong>Post-op ≥ 400 µm</strong>
-                    <span class="rule-threshold"></span>
-                  </div>
-                  <span class="rule-value">–</span>
-                </article>
-              </div>
-            </div>
+            <p class="support-note" id="desktop-note">
+              <span id="desktop-note-text">También disponible como app nativa para macOS.</span>
+              <a id="download-link-inline" href="#" target="_blank" rel="noreferrer">Descargar app</a>
+            </p>
           </div>
-        </section>
-
-        <section class="desktop-download panel" id="desktop-download">
-          <div class="panel-header">
-            <span class="eyebrow">Descargar app</span>
-            <h2>Usar la versión de escritorio</h2>
-          </div>
-          <p>
-            La app nativa para macOS sigue siendo parte del proyecto y se distribuye mediante GitHub Releases.
-          </p>
-          <div class="hero-cta">
-            <a class="primary-button" id="download-link-secondary" href="#" target="_blank" rel="noreferrer">
-              Descargar para macOS
-            </a>
-            <a class="ghost-button" id="repo-link-secondary" href="#" target="_blank" rel="noreferrer">
-              Ver repositorio
-            </a>
-          </div>
-          <p class="inline-hint" id="download-help">
-            Si todavía no ves enlace de descarga, configura la URL pública del repositorio o de la release.
-          </p>
         </section>
       </main>
+    </div>
+
+    <div class="modal-shell is-hidden" id="info-modal" aria-hidden="true">
+      <button class="modal-backdrop" id="info-backdrop" type="button" aria-label="Cerrar información"></button>
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="info-title">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow">Acerca de</span>
+            <h2 id="info-title">AblacionCorneal</h2>
+          </div>
+          <button class="ghost-button ghost-button--small" id="info-close-button" type="button">Cerrar</button>
+        </div>
+
+        <div class="modal-body">
+          <p>
+            Herramienta clínica para estimar márgenes de seguridad en planificación de ablación
+            corneal, con actualización inmediata de reglas y factor limitante.
+          </p>
+
+          <div class="info-grid">
+            <article class="info-card">
+              <strong>Versión web</strong>
+              <p>Usa el mismo core clínico Python que el resto del proyecto y está pensada para consulta rápida en navegador.</p>
+            </article>
+            <article class="info-card">
+              <strong>Versión desktop</strong>
+              <p>La app nativa para macOS sigue disponible como descarga y se distribuye mediante GitHub Releases.</p>
+            </article>
+          </div>
+
+          <p class="modal-disclaimer">
+            Herramienta de apoyo clínico. No sustituye el criterio médico ni la decisión asistencial.
+          </p>
+        </div>
+      </section>
     </div>
 
     <script type="module" src="/static/app.js"></script>
