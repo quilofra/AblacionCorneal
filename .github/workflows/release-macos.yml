@@ -1,0 +1,47 @@
+name: Release macOS App
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller Pillow
+
+      - name: Build app bundle
+        run: python -m PyInstaller AblacionCorneal.spec
+
+      - name: Package app
+        run: ditto -c -k --sequesterRsrc --keepParent dist/AblacionCorneal.app dist/AblacionCorneal-macOS.zip
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/AblacionCorneal-macOS.zip --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              dist/AblacionCorneal-macOS.zip \
+              --title "${GITHUB_REF_NAME}" \
+              --notes "Build automática de AblacionCorneal para macOS."
+          fi
