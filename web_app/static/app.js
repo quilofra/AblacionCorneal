@@ -1,10 +1,28 @@
+const DEBOUNCE_MS = 200;
+const FALLBACK_PROCEDURES = [
+  { value: "surface", label: "Superficie (PRK/PTK)" },
+  { value: "lasik", label: "LASIK" },
+  { value: "smile", label: "SMILE" },
+];
+
+const FALLBACK_ZONES = [6, 6.5];
+
 const state = {
   config: null,
+  laser: null,
+  laserSeq: 0,
+  laserAbort: null,
+  laserTimer: null,
+  requestSeq: 0,
+  abortController: null,
+  debounceTimer: null,
 };
 
 const elements = {
   procedureSelect: document.querySelector("#procedure-select"),
-  legacyToggle: document.querySelector("#legacy-toggle"),
+  zoneSelect: document.querySelector("#optical-zone-select"),
+  sphereInput: document.querySelector("#sphere-input"),
+  laserText: document.querySelector("#laser-text"),
   flapCapField: document.querySelector("#flap-cap-field"),
   flapCapLabel: document.querySelector("#flap-cap-label"),
   flapCapInput: document.querySelector("#flap-cap-input"),
@@ -110,18 +128,14 @@ function tissueLabel(procedure) {
 
 function updateConfigurationUI() {
   const procedure = currentProcedure();
-  const isLegacy = elements.legacyToggle.checked;
   const label = tissueLabel(procedure);
-  const needsFlapCap = procedure !== "surface" && !isLegacy;
+  const needsFlapCap = procedure !== "surface";
 
   elements.flapCapLabel.textContent = `Espesor ${label.toLowerCase()} (µm)`;
-  elements.flapCapInput.placeholder = procedure === "lasik" ? "110" : "120";
+  elements.flapCapInput.placeholder = "120";
   elements.flapCapField.classList.toggle("is-hidden", !needsFlapCap);
 
-  if (isLegacy) {
-    elements.settingsHint.textContent =
-      "Modo legacy activo: replica el cálculo histórico e ignora flap/cap.";
-  } else if (procedure !== "surface") {
+  if (procedure !== "surface") {
     elements.settingsHint.textContent =
       `Se descontará ${label.toLowerCase()} para calcular el lecho residual.`;
   } else {
@@ -197,7 +211,102 @@ function buildSummary(result, paqui, ablation) {
         ? "Cerca"
         : "No cumple";
 
-  return `${result.procedure_label}, paqui preop ${paqui} µm, ablación ${ablation} µm (${result.ablation_pct.toFixed(1)}%), LER ${result.ler_um} µm (${result.ler_pct.toFixed(1)}%), post-op ${result.postop_paqui_um} µm, ${result.tissue_label.toLowerCase()} efectivo ${result.subtract_um} µm, legacy ${result.legacy_mode ? "sí" : "no"}, estado ${statusLabel}, limita ${result.limit_factor}, máx segura ${result.ablation_max_safe_um} µm, margen ${result.margin_um >= 0 ? "+" : ""}${result.margin_um} µm.`;
+  const laser = state.laser && state.laser.found
+    ? `esfera ${formatD(state.laser.sphere_d)} D, ZO ${formatZone(state.laser.optical_zone_mm)} mm (Teneo ${state.laser.ablation_um} µm${state.laser.interpolated ? ", interpolado" : ""}), `
+    : "";
+
+  return `${result.procedure_label}, ${laser}paqui preop ${paqui} µm, ablación ${ablation} µm (${result.ablation_pct.toFixed(1)}%), LER ${result.ler_um} µm (${result.ler_pct.toFixed(1)}%), post-op ${result.postop_paqui_um} µm, ${result.tissue_label.toLowerCase()} efectivo ${result.subtract_um} µm, estado ${statusLabel}, limita ${result.limit_factor}, máx segura ${result.ablation_max_safe_um} µm, margen ${result.margin_um >= 0 ? "+" : ""}${result.margin_um} µm.`;
+}
+
+function formatD(value) {
+  const text = Number(value).toLocaleString("es-ES", { signDisplay: "exceptZero", maximumFractionDigits: 2 });
+  return text.replace("-", "−");
+}
+
+function formatZone(value) {
+  return Number(value).toLocaleString("es-ES", { maximumFractionDigits: 1 });
+}
+
+function showLaser(text) {
+  elements.laserText.textContent = text;
+}
+
+function scheduleLaser() {
+  window.clearTimeout(state.laserTimer);
+  state.laserTimer = window.setTimeout(updateLaser, DEBOUNCE_MS);
+}
+
+async function updateLaser() {
+  const seq = ++state.laserSeq;
+  if (state.laserAbort) {
+    state.laserAbort.abort();
+    state.laserAbort = null;
+  }
+
+  const sphere = Number.parseFloat(elements.sphereInput.value);
+  if (Number.isNaN(sphere)) {
+    state.laser = null;
+    showLaser("");
+    return;
+  }
+
+  const controller = new AbortController();
+  state.laserAbort = controller;
+  const query = new URLSearchParams({
+    sphere_d: String(sphere),
+    optical_zone_mm: elements.zoneSelect.value,
+  });
+
+  let laser;
+  try {
+    const response = await fetch(`/api/laser-ablation?${query}`, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`http-${response.status}`);
+    }
+    laser = await response.json();
+  } catch (error) {
+    if (error.name !== "AbortError" && seq === state.laserSeq) {
+      state.laser = null;
+      showLaser("No se pudo consultar la tabla del láser.");
+    }
+    return;
+  }
+
+  if (seq !== state.laserSeq) {
+    return;
+  }
+  state.laserAbort = null;
+  state.laser = laser;
+
+  if (!laser.found) {
+    showLaser(laser.message);
+    return;
+  }
+
+  const details = laser.interpolated
+    ? "interpolado entre dos filas de la tabla"
+    : `zona ${laser.zone_mm.replaceAll(".", ",")} mm · ${laser.time_s} s`;
+  showLaser(
+    `Teneo · ZO ${formatZone(laser.optical_zone_mm)} mm · ${formatD(laser.sphere_d)} D → ablación máx. ${laser.ablation_um} µm (${details}).`,
+  );
+  elements.ablationInput.value = String(laser.ablation_um);
+  computeNow();
+}
+
+function showFailure(message) {
+  elements.errorText.textContent = message;
+  elements.hintText.textContent = "";
+  resetResults();
+}
+
+function scheduleCompute() {
+  window.clearTimeout(state.debounceTimer);
+  state.debounceTimer = window.setTimeout(compute, DEBOUNCE_MS);
+}
+
+function computeNow() {
+  window.clearTimeout(state.debounceTimer);
+  compute();
 }
 
 async function compute() {
@@ -205,10 +314,15 @@ async function compute() {
   const ablation = Number.parseInt(elements.ablationInput.value || "", 10) || 0;
   const flapCap = Number.parseInt(elements.flapCapInput.value || "", 10) || 0;
 
+  // Cualquier petición anterior queda obsoleta.
+  const seq = ++state.requestSeq;
+  if (state.abortController) {
+    state.abortController.abort();
+    state.abortController = null;
+  }
+
   if (Number.isNaN(paqui)) {
-    elements.errorText.textContent = "Introduce paquimetría preop.";
-    elements.hintText.textContent = "";
-    resetResults();
+    showFailure("Introduce paquimetría preop.");
     return;
   }
 
@@ -218,16 +332,40 @@ async function compute() {
     suspicious: elements.suspiciousToggle.checked,
     procedure: currentProcedure(),
     flap_cap_um: flapCap,
-    legacy_mode: elements.legacyToggle.checked,
   };
 
-  const response = await fetch("/api/compute", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  state.abortController = controller;
 
-  const result = await response.json();
+  let result;
+  try {
+    const response = await fetch("/api/compute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(response.status === 422 ? "invalid" : `http-${response.status}`);
+    }
+    result = await response.json();
+  } catch (error) {
+    if (error.name === "AbortError" || seq !== state.requestSeq) {
+      return;
+    }
+    showFailure(
+      error.message === "invalid"
+        ? "Valores fuera de rango: revisa las cifras introducidas."
+        : "No se pudo calcular (sin conexión con el servidor). Se reintentará al cambiar un dato.",
+    );
+    return;
+  }
+
+  // Una respuesta lenta no debe pisar a una más reciente.
+  if (seq !== state.requestSeq) {
+    return;
+  }
+  state.abortController = null;
 
   if (!result.valid) {
     elements.errorText.textContent = result.errors?.[0] || "Entradas inconsistentes.";
@@ -300,7 +438,18 @@ async function compute() {
   );
 
   elements.copySummaryButton.onclick = async () => {
-    await navigator.clipboard.writeText(buildSummary(result, paqui, ablation));
+    const button = elements.copySummaryButton;
+    const original = button.dataset.label || button.textContent;
+    button.dataset.label = original;
+    try {
+      await navigator.clipboard.writeText(buildSummary(result, paqui, ablation));
+      button.textContent = "Copiado ✓";
+    } catch (error) {
+      button.textContent = "No se pudo copiar";
+    }
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 1800);
   };
 }
 
@@ -310,16 +459,43 @@ function updateDesktopNote(downloadUrl) {
     : "La app nativa para macOS se publicará desde GitHub Releases cuando exista enlace público.";
 }
 
-async function bootstrap() {
-  const configResponse = await fetch("/api/config");
-  state.config = await configResponse.json();
+async function loadConfig() {
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) {
+      throw new Error(`http-${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    // Sin config la calculadora sigue funcionando con valores por defecto.
+    return {
+      procedure_choices: FALLBACK_PROCEDURES,
+      default_procedure: "lasik",
+      default_flap_cap_um: 120,
+    };
+  }
+}
 
-  state.config.procedure_choices.forEach((item) => {
+async function bootstrap() {
+  state.config = await loadConfig();
+
+  (state.config.procedure_choices || FALLBACK_PROCEDURES).forEach((item) => {
     const option = document.createElement("option");
     option.value = item.value;
     option.textContent = item.label;
     elements.procedureSelect.append(option);
   });
+  (state.config.optical_zone_choices || FALLBACK_ZONES).forEach((zone) => {
+    const option = document.createElement("option");
+    option.value = String(zone);
+    option.textContent = formatZone(zone);
+    elements.zoneSelect.append(option);
+  });
+  elements.zoneSelect.value = String(state.config.default_optical_zone_mm || 6);
+  elements.procedureSelect.value = state.config.default_procedure || "lasik";
+  if (!elements.flapCapInput.value) {
+    elements.flapCapInput.value = String(state.config.default_flap_cap_um || 120);
+  }
 
   const repoUrl = state.config.github_repo_url || "";
   const downloadUrl = state.config.desktop_download_url || "";
@@ -328,9 +504,13 @@ async function bootstrap() {
   elements.downloadLinks.forEach((link) => setLinkState(link, downloadUrl));
   updateDesktopNote(downloadUrl);
 
+  [elements.zoneSelect, elements.sphereInput].forEach((element) => {
+    element.addEventListener("input", scheduleLaser);
+    element.addEventListener("change", updateLaser);
+  });
+
   [
     elements.procedureSelect,
-    elements.legacyToggle,
     elements.flapCapInput,
     elements.paquiInput,
     elements.ablationInput,
@@ -338,11 +518,11 @@ async function bootstrap() {
   ].forEach((element) => {
     element.addEventListener("input", () => {
       updateConfigurationUI();
-      compute();
+      scheduleCompute();
     });
     element.addEventListener("change", () => {
       updateConfigurationUI();
-      compute();
+      computeNow();
     });
   });
 

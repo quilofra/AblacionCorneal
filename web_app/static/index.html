@@ -55,14 +55,14 @@
                 <select id="procedure-select"></select>
               </label>
 
-              <label class="field field--toggle">
-                <span>Modo legacy</span>
-                <input id="legacy-toggle" type="checkbox" checked>
+              <label class="field">
+                <span>Zona óptica (mm)</span>
+                <select id="optical-zone-select"></select>
               </label>
 
               <label class="field field--conditional" id="flap-cap-field">
                 <span id="flap-cap-label">Espesor flap/cap (µm)</span>
-                <input id="flap-cap-input" type="number" min="0" max="2000" inputmode="numeric" placeholder="110">
+                <input id="flap-cap-input" type="number" min="0" max="2000" inputmode="numeric" placeholder="120" value="120">
               </label>
             </div>
 
@@ -80,6 +80,11 @@
               </label>
 
               <label class="field">
+                <span>Esfera (D)</span>
+                <input id="sphere-input" type="number" min="-10" max="10" step="0.25" inputmode="decimal" placeholder="-3.00">
+              </label>
+
+              <label class="field">
                 <span>Ablación planificada (µm)</span>
                 <input id="ablation-input" type="number" min="0" max="2000" inputmode="numeric" placeholder="90">
               </label>
@@ -90,6 +95,7 @@
               </label>
             </div>
 
+            <p class="inline-hint" id="laser-text"></p>
             <p class="inline-hint" id="hint-text"></p>
             <p class="inline-error" id="error-text"></p>
           </div>

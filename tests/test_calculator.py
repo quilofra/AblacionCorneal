@@ -74,7 +74,7 @@ def test_edge_ablation_pct_warn():
     assert result.rule_ablation_status == "warn"
 
 
-def test_legacy_mode_ignores_flap_cap_for_lasik():
+def test_lasik_uses_flap_cap():
     result = compute_result(
         EyeInput(
             paqui_preop_um=500,
@@ -82,26 +82,6 @@ def test_legacy_mode_ignores_flap_cap_for_lasik():
             suspicious=False,
             procedure="lasik",
             flap_cap_um=110,
-            legacy_mode=True,
-        )
-    )
-
-    assert result.valid is True
-    assert result.subtract_um == 0
-    assert result.ler_um == 420
-    assert result.overall_status == "ok"
-    assert result.limit_factor == "Ablación %"
-
-
-def test_lasik_uses_flap_cap_in_non_legacy_mode():
-    result = compute_result(
-        EyeInput(
-            paqui_preop_um=500,
-            ablation_um=80,
-            suspicious=False,
-            procedure="lasik",
-            flap_cap_um=110,
-            legacy_mode=False,
         )
     )
 
@@ -113,7 +93,7 @@ def test_lasik_uses_flap_cap_in_non_legacy_mode():
     assert result.ablation_max_safe_um == 90
 
 
-def test_surface_ignores_flap_cap_even_without_legacy():
+def test_surface_ignores_flap_cap():
     result = compute_result(
         EyeInput(
             paqui_preop_um=500,
@@ -121,7 +101,6 @@ def test_surface_ignores_flap_cap_even_without_legacy():
             suspicious=False,
             procedure="surface",
             flap_cap_um=120,
-            legacy_mode=False,
         )
     )
 
@@ -130,7 +109,7 @@ def test_surface_ignores_flap_cap_even_without_legacy():
     assert result.ler_um == 420
 
 
-def test_missing_flap_cap_is_invalid_for_lasik_non_legacy():
+def test_missing_flap_cap_is_invalid_for_lasik():
     result = compute_result(
         EyeInput(
             paqui_preop_um=500,
@@ -138,7 +117,6 @@ def test_missing_flap_cap_is_invalid_for_lasik_non_legacy():
             suspicious=False,
             procedure="lasik",
             flap_cap_um=0,
-            legacy_mode=False,
         )
     )
 
@@ -155,7 +133,6 @@ def test_flap_cap_plus_ablation_cannot_exceed_preop():
             suspicious=False,
             procedure="lasik",
             flap_cap_um=300,
-            legacy_mode=False,
         )
     )
 
@@ -175,3 +152,22 @@ def test_inconsistent_inputs_invalid():
 
     assert result.valid is False
     assert result.overall_status == "invalid"
+
+
+def test_default_flap_is_120_and_lasik_is_default_procedure():
+    from shared import DEFAULT_FLAP_CAP_UM, DEFAULT_PROCEDURE
+
+    assert DEFAULT_FLAP_CAP_UM == 120
+    assert DEFAULT_PROCEDURE == "lasik"
+
+
+def test_lasik_default_flap_is_subtracted_from_residual_bed():
+    from shared import DEFAULT_FLAP_CAP_UM
+
+    result = compute_result(
+        EyeInput(paqui_preop_um=540, ablation_um=80, procedure="lasik", flap_cap_um=DEFAULT_FLAP_CAP_UM)
+    )
+
+    assert result.valid
+    assert result.subtract_um == 120
+    assert result.ler_um == 540 - 120 - 80

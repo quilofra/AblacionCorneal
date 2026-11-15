@@ -3,16 +3,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from shared.calculator import (
+    DEFAULT_FLAP_CAP_UM,
+    DEFAULT_PROCEDURE,
     PROCEDURE_CHOICES,
     EyeInput,
     compute_result,
     eye_result_to_dict,
+)
+from shared.teneo import (
+    DEFAULT_OPTICAL_ZONE_MM,
+    OPTICAL_ZONES_MM,
+    laser_ablation_to_dict,
+    teneo_max_ablation,
 )
 from web_app.config import load_settings
 
@@ -36,7 +44,6 @@ class ComputeRequest(BaseModel):
     suspicious: bool = False
     procedure: Literal["surface", "lasik", "smile"] = "surface"
     flap_cap_um: int = Field(default=0, ge=0, le=2000)
-    legacy_mode: bool = False
 
 
 @app.get("/", include_in_schema=False)
@@ -55,10 +62,22 @@ def config() -> dict[str, object]:
         "app_name": settings.app_name,
         "github_repo_url": settings.github_repo_url,
         "desktop_download_url": settings.desktop_download_url,
+        "default_procedure": DEFAULT_PROCEDURE,
+        "optical_zone_choices": list(OPTICAL_ZONES_MM),
+        "default_optical_zone_mm": DEFAULT_OPTICAL_ZONE_MM,
+        "default_flap_cap_um": DEFAULT_FLAP_CAP_UM,
         "procedure_choices": [
             {"value": value, "label": label} for value, label in PROCEDURE_CHOICES
         ],
     }
+
+
+@app.get("/api/laser-ablation")
+def laser_ablation(
+    sphere_d: float = Query(..., ge=-30, le=30),
+    optical_zone_mm: float = Query(DEFAULT_OPTICAL_ZONE_MM),
+) -> dict[str, object]:
+    return laser_ablation_to_dict(teneo_max_ablation(sphere_d, optical_zone_mm))
 
 
 @app.post("/api/compute")
@@ -70,7 +89,6 @@ def compute(payload: ComputeRequest) -> dict[str, object]:
             suspicious=payload.suspicious,
             procedure=payload.procedure,
             flap_cap_um=payload.flap_cap_um,
-            legacy_mode=payload.legacy_mode,
         )
     )
     return eye_result_to_dict(result)

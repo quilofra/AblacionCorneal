@@ -7,6 +7,11 @@ Repositorio dual para una calculadora clínica de seguridad en ablación corneal
 
 Ambas vías reutilizan el mismo core clínico en `shared/`.
 
+## Qué calcula
+
+- **Seguridad:** ablación %, lecho residual (LER) en µm y %, paquimetría post-op. En LASIK y SMILE se descuenta siempre el flap/cap (120 µm por defecto).
+- **Tabla del láser Teneo** (`shared/teneo.py`): eligiendo zona óptica (6 o 6,5 mm) e introduciendo la esfera, se muestra la ablación máxima de la tabla y se rellena la ablación planificada. Entre dos dioptrías enteras se interpola y se redondea hacia arriba; fuera de tabla (menos de ±1 D, más de ±10 D o sin dato) lo indica.
+
 ## Usar online
 
 La versión web vive en `web_app/` y expone una calculadora real en navegador, no una landing estática.
@@ -99,7 +104,7 @@ La distribución se hace con GitHub Releases.
 
 ## Qué hay en cada parte
 
-- `shared/`: reglas clínicas y cálculo reutilizable.
+- `shared/`: reglas clínicas, tabla Teneo y cálculo reutilizable.
 - `desktop_app/`: interfaz PySide6.
 - `web_app/`: servidor FastAPI y frontend navegador.
 - `main.py`: entrypoint compatible para seguir lanzando la app desktop desde raíz.

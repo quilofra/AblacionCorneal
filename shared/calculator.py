@@ -13,6 +13,8 @@ WARN_PAQUI_LOW = 470
 WARN_PAQUI_HIGH = 500
 MARGIN_UM = 20
 MARGIN_PCT = 2.0
+DEFAULT_FLAP_CAP_UM = 120
+DEFAULT_PROCEDURE = "lasik"
 
 RuleStatus = Literal["pass", "warn", "fail"]
 OverallStatus = Literal["ok", "warning", "fail", "invalid"]
@@ -38,7 +40,6 @@ class EyeInput:
     suspicious: bool = False
     procedure: ProcedureType = "surface"
     flap_cap_um: int = 0
-    legacy_mode: bool = False
 
 
 @dataclass
@@ -66,7 +67,6 @@ class EyeResult:
     procedure_label: str = "Superficie (PRK/PTK)"
     tissue_label: str = "Flap/Cap"
     flap_cap_um: int = 0
-    legacy_mode: bool = False
 
 
 def eye_result_to_dict(result: EyeResult) -> dict[str, object]:
@@ -96,8 +96,6 @@ def procedure_tissue_label(procedure: ProcedureType) -> str:
 
 
 def _effective_subtract_um(eye_input: EyeInput) -> int:
-    if eye_input.legacy_mode:
-        return 0
     if not procedure_supports_flap_cap(eye_input.procedure):
         return 0
     return eye_input.flap_cap_um
@@ -113,11 +111,7 @@ def validate_eye_input(eye_input: EyeInput) -> list[str]:
         errors.append("Flap/Cap no puede ser negativo.")
     if eye_input.paqui_preop_um > 0 and eye_input.ablation_um > eye_input.paqui_preop_um:
         errors.append("Entradas inconsistentes: ablación supera paquimetría preop.")
-    if (
-        not eye_input.legacy_mode
-        and procedure_supports_flap_cap(eye_input.procedure)
-        and eye_input.flap_cap_um <= 0
-    ):
+    if procedure_supports_flap_cap(eye_input.procedure) and eye_input.flap_cap_um <= 0:
         errors.append(
             f"Introduce espesor de {procedure_tissue_label(eye_input.procedure).lower()}."
         )
@@ -210,5 +204,4 @@ def compute_result(eye_input: EyeInput) -> EyeResult:
         procedure_label=procedure_label(eye_input.procedure),
         tissue_label=procedure_tissue_label(eye_input.procedure),
         flap_cap_um=eye_input.flap_cap_um,
-        legacy_mode=eye_input.legacy_mode,
     )

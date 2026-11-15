@@ -384,8 +384,7 @@ select {
   display: block;
   color: var(--muted);
   font-size: 0.74rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .metric-chip strong {
