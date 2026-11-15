@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -29,6 +30,28 @@ app = FastAPI(
     title="AblacionCorneal Web",
     summary="Calculadora web de seguridad para ablación corneal",
 )
+
+
+def _asset_version() -> str:
+    """Huella del CSS/JS: cambia en cada despliegue y rompe cachés viejas (navegador y Cloudflare)."""
+    digest = hashlib.sha1()
+    for name in ("app.js", "app.css"):
+        digest.update((STATIC_DIR / name).read_bytes())
+    return digest.hexdigest()[:10]
+
+
+ASSET_VERSION = _asset_version()
+
+
+@app.middleware("http")
+async def revalidate_static(request: Request, call_next) -> Response:
+    # Sin esto, Cloudflare y los navegadores guardaban app.js/app.css 4 h y se mezclaban versiones.
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith(("/static/", "/assets/")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
@@ -45,8 +68,9 @@ class ComputeRequest(BaseModel):
 
 
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+def index() -> HTMLResponse:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("__ASSET_VERSION__", ASSET_VERSION))
 
 
 @app.get("/health")

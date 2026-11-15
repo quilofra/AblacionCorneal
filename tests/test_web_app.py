@@ -103,3 +103,17 @@ def test_config_exposes_defaults():
     assert data["flap_um"] == 120
     assert data["optical_zone_choices"] == [6.0, 6.5]
     assert data["default_optical_zone_mm"] == 6.0
+
+
+def test_index_references_versioned_assets_and_is_not_cached():
+    response = client.get("/")
+
+    assert "__ASSET_VERSION__" not in response.text
+    assert "/static/app.js?v=" in response.text
+    assert "/static/app.css?v=" in response.text
+    assert response.headers["cache-control"] == "no-cache"
+
+
+def test_static_files_must_be_revalidated():
+    for path in ("/static/app.js", "/static/app.css"):
+        assert client.get(path).headers["cache-control"] == "no-cache"
