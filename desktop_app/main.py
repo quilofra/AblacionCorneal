@@ -398,7 +398,7 @@ class MainWindow(QMainWindow):
         self.segmented_bar = SegmentedBar()
         body_layout.addWidget(self.segmented_bar)
 
-        self.seg_labels = QLabel("Flap/Cap 0 µm · Ablación 0 µm · Residual 0 µm")
+        self.seg_labels = QLabel("Flap 120 µm · Ablación 0 µm · Residual 0 µm")
         self.seg_labels.setObjectName("hint")
         body_layout.addWidget(self.seg_labels)
 
