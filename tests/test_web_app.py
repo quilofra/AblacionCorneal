@@ -117,3 +117,17 @@ def test_index_references_versioned_assets_and_is_not_cached():
 def test_static_files_must_be_revalidated():
     for path in ("/static/app.js", "/static/app.css"):
         assert client.get(path).headers["cache-control"] == "no-cache"
+
+
+def test_favicon_is_linked_and_served():
+    html = client.get("/").text
+    assert 'rel="icon"' in html and "/assets/favicon.svg" in html
+    assert "/assets/apple-touch-icon.png" in html
+
+    ico = client.get("/favicon.ico")
+    assert ico.status_code == 200
+    assert ico.headers["content-type"] == "image/x-icon"
+    assert ico.content[:4] == b"\x00\x00\x01\x00"  # cabecera ICO válida
+
+    for path in ("/assets/favicon.svg", "/assets/favicon-32.png", "/assets/apple-touch-icon.png"):
+        assert client.get(path).status_code == 200

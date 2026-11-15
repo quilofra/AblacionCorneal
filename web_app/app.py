@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -33,10 +33,13 @@ app = FastAPI(
 
 
 def _asset_version() -> str:
-    """Huella del CSS/JS: cambia en cada despliegue y rompe cachés viejas (navegador y Cloudflare)."""
+    """Huella del CSS, JS e iconos: cambia en cada despliegue y rompe cachés viejas (navegador y Cloudflare)."""
     digest = hashlib.sha1()
-    for name in ("app.js", "app.css"):
-        digest.update((STATIC_DIR / name).read_bytes())
+    for folder in (STATIC_DIR, ASSETS_DIR):
+        for path in sorted(folder.iterdir()):
+            if path.is_file() and path.name != "index.html":
+                digest.update(path.name.encode())
+                digest.update(path.read_bytes())
     return digest.hexdigest()[:10]
 
 
@@ -47,7 +50,7 @@ ASSET_VERSION = _asset_version()
 async def revalidate_static(request: Request, call_next) -> Response:
     # Sin esto, Cloudflare y los navegadores guardaban app.js/app.css 4 h y se mezclaban versiones.
     response = await call_next(request)
-    if request.url.path == "/" or request.url.path.startswith(("/static/", "/assets/")):
+    if request.url.path in ("/", "/favicon.ico") or request.url.path.startswith(("/static/", "/assets/")):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -71,6 +74,11 @@ class ComputeRequest(BaseModel):
 def index() -> HTMLResponse:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     return HTMLResponse(html.replace("__ASSET_VERSION__", ASSET_VERSION))
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(ASSETS_DIR / "favicon.ico", media_type="image/x-icon")
 
 
 @app.get("/health")
