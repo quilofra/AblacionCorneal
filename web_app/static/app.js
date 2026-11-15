@@ -1,18 +1,14 @@
 const DEBOUNCE_MS = 200;
 const FALLBACK_PROCEDURES = [
-  { value: "surface", label: "Superficie (PRK/PTK)" },
   { value: "lasik", label: "LASIK" },
-  { value: "smile", label: "SMILE" },
+  { value: "prk", label: "PRK" },
 ];
+const FLAP_UM = 120;
 
 const FALLBACK_ZONES = [6, 6.5];
 
 const state = {
   config: null,
-  laser: null,
-  laserSeq: 0,
-  laserAbort: null,
-  laserTimer: null,
   requestSeq: 0,
   abortController: null,
   debounceTimer: null,
@@ -21,11 +17,11 @@ const state = {
 const elements = {
   procedureSelect: document.querySelector("#procedure-select"),
   zoneSelect: document.querySelector("#optical-zone-select"),
+  modeSelect: document.querySelector("#input-mode-select"),
   sphereInput: document.querySelector("#sphere-input"),
+  cylinderInput: document.querySelector("#cylinder-input"),
+  modeFields: document.querySelectorAll("[data-mode]"),
   laserText: document.querySelector("#laser-text"),
-  flapCapField: document.querySelector("#flap-cap-field"),
-  flapCapLabel: document.querySelector("#flap-cap-label"),
-  flapCapInput: document.querySelector("#flap-cap-input"),
   settingsHint: document.querySelector("#settings-hint"),
   paquiInput: document.querySelector("#paqui-input"),
   ablationInput: document.querySelector("#ablation-input"),
@@ -113,35 +109,28 @@ function bindInfoModal() {
 }
 
 function currentProcedure() {
-  return elements.procedureSelect.value || "surface";
+  return elements.procedureSelect.value || "lasik";
 }
 
-function tissueLabel(procedure) {
-  if (procedure === "lasik") {
-    return "Flap";
-  }
-  if (procedure === "smile") {
-    return "Cap";
-  }
-  return "Flap/Cap";
+function currentMode() {
+  return elements.modeSelect.value === "direct" ? "direct" : "refraction";
+}
+
+function segmentText(flap, ablation, residual) {
+  const flapText = flap > 0 ? `Flap ${flap} µm · ` : "";
+  return `${flapText}Ablación ${ablation} µm · Residual ${residual} µm`;
 }
 
 function updateConfigurationUI() {
-  const procedure = currentProcedure();
-  const label = tissueLabel(procedure);
-  const needsFlapCap = procedure !== "surface";
+  const mode = currentMode();
+  elements.modeFields.forEach((field) => {
+    field.classList.toggle("is-hidden", field.dataset.mode !== mode);
+  });
 
-  elements.flapCapLabel.textContent = `Espesor ${label.toLowerCase()} (µm)`;
-  elements.flapCapInput.placeholder = "120";
-  elements.flapCapField.classList.toggle("is-hidden", !needsFlapCap);
-
-  if (procedure !== "surface") {
-    elements.settingsHint.textContent =
-      `Se descontará ${label.toLowerCase()} para calcular el lecho residual.`;
-  } else {
-    elements.settingsHint.textContent =
-      "Técnica de superficie: no descuenta flap/cap en el cálculo.";
-  }
+  elements.settingsHint.textContent =
+    currentProcedure() === "lasik"
+      ? `LASIK: se resta el flap de ${FLAP_UM} µm del lecho residual.`
+      : "PRK: no hay flap, no se resta nada.";
 }
 
 function setStatusBadge(status) {
@@ -169,8 +158,9 @@ function setRule(ruleElement, status, value, threshold) {
   ruleElement.querySelector(".rule-threshold").textContent = threshold;
 }
 
-function updateSegments(flapCap, ablation, residual) {
-  const total = flapCap + ablation + residual;
+function updateSegments(flap, ablation, residual) {
+  const total = flap + ablation + residual;
+  elements.segmentFlap.hidden = flap <= 0;
 
   if (!total) {
     elements.segmentFlap.style.flex = "1";
@@ -179,7 +169,7 @@ function updateSegments(flapCap, ablation, residual) {
     return;
   }
 
-  elements.segmentFlap.style.flex = `${Math.max(1, flapCap)}`;
+  elements.segmentFlap.style.flex = `${Math.max(1, flap)}`;
   elements.segmentAblation.style.flex = `${Math.max(1, ablation)}`;
   elements.segmentResidual.style.flex = `${Math.max(1, residual)}`;
 }
@@ -194,8 +184,9 @@ function resetResults() {
   elements.maxSafeText.textContent = "Máx ablación segura: –";
   elements.marginText.textContent = "Margen: –";
   elements.limitText.textContent = "Limita: –";
-  elements.segmentLabels.textContent = `${tissueLabel(currentProcedure())} 0 µm · Ablación 0 µm · Residual 0 µm`;
+  elements.segmentLabels.textContent = segmentText(currentProcedure() === "lasik" ? FLAP_UM : 0, 0, 0);
   updateSegments(0, 0, 0);
+  elements.laserText.textContent = "";
 
   setRule(elements.rules.ablation, "neutral", "–", "");
   setRule(elements.rules.lerUm, "neutral", "–", "");
@@ -203,7 +194,7 @@ function resetResults() {
   setRule(elements.rules.postop, "neutral", "–", "");
 }
 
-function buildSummary(result, paqui, ablation) {
+function buildSummary(result, paqui) {
   const statusLabel =
     result.overall_status === "ok"
       ? "Cumple"
@@ -211,11 +202,12 @@ function buildSummary(result, paqui, ablation) {
         ? "Cerca"
         : "No cumple";
 
-  const laser = state.laser && state.laser.found
-    ? `esfera ${formatD(state.laser.sphere_d)} D, ZO ${formatZone(state.laser.optical_zone_mm)} mm (Teneo ${state.laser.ablation_um} µm${state.laser.interpolated ? ", interpolado" : ""}), `
+  const laser = result.laser
+    ? `graduación ${describeRefraction(result.laser)}, ZO ${formatZone(result.laser.optical_zone_mm)} mm (Teneo${result.laser.interpolated ? ", interpolado" : ""}), `
     : "";
+  const flap = result.subtract_um > 0 ? `flap ${result.subtract_um} µm, ` : "sin flap, ";
 
-  return `${result.procedure_label}, ${laser}paqui preop ${paqui} µm, ablación ${ablation} µm (${result.ablation_pct.toFixed(1)}%), LER ${result.ler_um} µm (${result.ler_pct.toFixed(1)}%), post-op ${result.postop_paqui_um} µm, ${result.tissue_label.toLowerCase()} efectivo ${result.subtract_um} µm, estado ${statusLabel}, limita ${result.limit_factor}, máx segura ${result.ablation_max_safe_um} µm, margen ${result.margin_um >= 0 ? "+" : ""}${result.margin_um} µm.`;
+  return `${result.procedure_label}, ${laser}paqui preop ${paqui} µm, ablación ${result.ablation_um} µm (${result.ablation_pct.toFixed(1)}%), LER ${result.ler_um} µm (${result.ler_pct.toFixed(1)}%), post-op ${result.postop_paqui_um} µm, ${flap}estado ${statusLabel}, limita ${result.limit_factor}, máx segura ${result.ablation_max_safe_um} µm, margen ${result.margin_um >= 0 ? "+" : ""}${result.margin_um} µm.`;
 }
 
 function formatD(value) {
@@ -227,70 +219,21 @@ function formatZone(value) {
   return Number(value).toLocaleString("es-ES", { maximumFractionDigits: 1 });
 }
 
-function showLaser(text) {
-  elements.laserText.textContent = text;
+function describeRefraction(laser) {
+  if (!laser.cylinder_d) {
+    return `${formatD(laser.sphere_d)} D`;
+  }
+  return `${formatD(laser.sphere_d)} / ${formatD(laser.cylinder_d)} (esfera equivalente ${formatD(laser.equivalent_d)} D)`;
 }
 
-function scheduleLaser() {
-  window.clearTimeout(state.laserTimer);
-  state.laserTimer = window.setTimeout(updateLaser, DEBOUNCE_MS);
-}
-
-async function updateLaser() {
-  const seq = ++state.laserSeq;
-  if (state.laserAbort) {
-    state.laserAbort.abort();
-    state.laserAbort = null;
+function laserSummary(laser) {
+  if (!laser || !laser.found) {
+    return "";
   }
-
-  const sphere = Number.parseFloat(elements.sphereInput.value);
-  if (Number.isNaN(sphere)) {
-    state.laser = null;
-    showLaser("");
-    return;
-  }
-
-  const controller = new AbortController();
-  state.laserAbort = controller;
-  const query = new URLSearchParams({
-    sphere_d: String(sphere),
-    optical_zone_mm: elements.zoneSelect.value,
-  });
-
-  let laser;
-  try {
-    const response = await fetch(`/api/laser-ablation?${query}`, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`http-${response.status}`);
-    }
-    laser = await response.json();
-  } catch (error) {
-    if (error.name !== "AbortError" && seq === state.laserSeq) {
-      state.laser = null;
-      showLaser("No se pudo consultar la tabla del láser.");
-    }
-    return;
-  }
-
-  if (seq !== state.laserSeq) {
-    return;
-  }
-  state.laserAbort = null;
-  state.laser = laser;
-
-  if (!laser.found) {
-    showLaser(laser.message);
-    return;
-  }
-
   const details = laser.interpolated
     ? "interpolado entre dos filas de la tabla"
     : `zona ${laser.zone_mm.replaceAll(".", ",")} mm · ${laser.time_s} s`;
-  showLaser(
-    `Teneo · ZO ${formatZone(laser.optical_zone_mm)} mm · ${formatD(laser.sphere_d)} D → ablación máx. ${laser.ablation_um} µm (${details}).`,
-  );
-  elements.ablationInput.value = String(laser.ablation_um);
-  computeNow();
+  return `Teneo · ZO ${formatZone(laser.optical_zone_mm)} mm · ${describeRefraction(laser)} → ablación ${laser.ablation_um} µm (${details}).`;
 }
 
 function showFailure(message) {
@@ -311,8 +254,6 @@ function computeNow() {
 
 async function compute() {
   const paqui = Number.parseInt(elements.paquiInput.value || "", 10);
-  const ablation = Number.parseInt(elements.ablationInput.value || "", 10) || 0;
-  const flapCap = Number.parseInt(elements.flapCapInput.value || "", 10) || 0;
 
   // Cualquier petición anterior queda obsoleta.
   const seq = ++state.requestSeq;
@@ -328,11 +269,27 @@ async function compute() {
 
   const payload = {
     paqui_preop_um: paqui,
-    ablation_um: ablation,
     suspicious: elements.suspiciousToggle.checked,
     procedure: currentProcedure(),
-    flap_cap_um: flapCap,
   };
+
+  if (currentMode() === "refraction") {
+    const sphere = Number.parseFloat(elements.sphereInput.value);
+    if (Number.isNaN(sphere)) {
+      showFailure("Introduce la esfera.");
+      return;
+    }
+    payload.sphere_d = sphere;
+    payload.cylinder_d = Number.parseFloat(elements.cylinderInput.value) || 0;
+    payload.optical_zone_mm = Number.parseFloat(elements.zoneSelect.value);
+  } else {
+    const ablation = Number.parseInt(elements.ablationInput.value || "", 10);
+    if (Number.isNaN(ablation)) {
+      showFailure("Introduce la ablación.");
+      return;
+    }
+    payload.ablation_um = ablation;
+  }
 
   const controller = new AbortController();
   state.abortController = controller;
@@ -375,6 +332,7 @@ async function compute() {
   }
 
   elements.errorText.textContent = "";
+  elements.laserText.textContent = laserSummary(result.laser);
   elements.hintText.textContent =
     paqui < 470 || paqui > 500
       ? "Paquimetría fuera del rango de referencia (470–500 µm)."
@@ -409,8 +367,8 @@ async function compute() {
   elements.maxSafeText.textContent = `Máx ablación segura: ${result.ablation_max_safe_um} µm`;
   elements.marginText.textContent = `Margen: ${result.margin_um >= 0 ? "+" : ""}${result.margin_um} µm`;
   elements.limitText.textContent = `Limita: ${result.limit_factor}`;
-  elements.segmentLabels.textContent = `${result.tissue_label} ${result.subtract_um} µm · Ablación ${ablation} µm · Residual ${result.ler_um} µm`;
-  updateSegments(result.subtract_um, ablation, result.ler_um);
+  elements.segmentLabels.textContent = segmentText(result.subtract_um, result.ablation_um, result.ler_um);
+  updateSegments(result.subtract_um, result.ablation_um, result.ler_um);
 
   setRule(
     elements.rules.ablation,
@@ -442,7 +400,7 @@ async function compute() {
     const original = button.dataset.label || button.textContent;
     button.dataset.label = original;
     try {
-      await navigator.clipboard.writeText(buildSummary(result, paqui, ablation));
+      await navigator.clipboard.writeText(buildSummary(result, paqui));
       button.textContent = "Copiado ✓";
     } catch (error) {
       button.textContent = "No se pudo copiar";
@@ -471,7 +429,6 @@ async function loadConfig() {
     return {
       procedure_choices: FALLBACK_PROCEDURES,
       default_procedure: "lasik",
-      default_flap_cap_um: 120,
     };
   }
 }
@@ -493,9 +450,6 @@ async function bootstrap() {
   });
   elements.zoneSelect.value = String(state.config.default_optical_zone_mm || 6);
   elements.procedureSelect.value = state.config.default_procedure || "lasik";
-  if (!elements.flapCapInput.value) {
-    elements.flapCapInput.value = String(state.config.default_flap_cap_um || 120);
-  }
 
   const repoUrl = state.config.github_repo_url || "";
   const downloadUrl = state.config.desktop_download_url || "";
@@ -504,14 +458,12 @@ async function bootstrap() {
   elements.downloadLinks.forEach((link) => setLinkState(link, downloadUrl));
   updateDesktopNote(downloadUrl);
 
-  [elements.zoneSelect, elements.sphereInput].forEach((element) => {
-    element.addEventListener("input", scheduleLaser);
-    element.addEventListener("change", updateLaser);
-  });
-
   [
     elements.procedureSelect,
-    elements.flapCapInput,
+    elements.modeSelect,
+    elements.zoneSelect,
+    elements.sphereInput,
+    elements.cylinderInput,
     elements.paquiInput,
     elements.ablationInput,
     elements.suspiciousToggle,

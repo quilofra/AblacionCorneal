@@ -47,6 +47,8 @@ _BY_SPHERE: dict[int, dict[float, _ZoneData]] = {
 class LaserAblation:
     found: bool
     sphere_d: float = 0.0
+    cylinder_d: float = 0.0
+    equivalent_d: float = 0.0
     optical_zone_mm: float = DEFAULT_OPTICAL_ZONE_MM
     ablation_um: int = 0
     time_s: int | None = None
@@ -63,45 +65,60 @@ def _fmt_d(value: float) -> str:
     return f"{value:+g}".replace(".", ",")
 
 
-def _fail(sphere_d: float, optical_zone_mm: float, message: str) -> LaserAblation:
+def _fail(
+    sphere_d: float, cylinder_d: float, equivalent_d: float, optical_zone_mm: float, message: str
+) -> LaserAblation:
     return LaserAblation(
-        found=False, sphere_d=sphere_d, optical_zone_mm=optical_zone_mm, message=message
+        found=False,
+        sphere_d=sphere_d,
+        cylinder_d=cylinder_d,
+        equivalent_d=equivalent_d,
+        optical_zone_mm=optical_zone_mm,
+        message=message,
     )
 
 
-def teneo_max_ablation(sphere_d: float, optical_zone_mm: float) -> LaserAblation:
-    """Ablación máxima (µm) de la tabla para una esfera y una zona óptica.
+def teneo_max_ablation(
+    sphere_d: float, optical_zone_mm: float, cylinder_d: float = 0.0
+) -> LaserAblation:
+    """Ablación máxima (µm) de la tabla para una graduación y una zona óptica.
+
+    La tabla solo tiene esfera: con cilindro se busca la esfera equivalente (esfera + cilindro/2).
 
     Entre dos filas enteras de la misma dirección (miopía o hipermetropía) se interpola
     linealmente y se redondea hacia arriba, para no quedarse corto.
     """
     zone = round(float(optical_zone_mm), 1)
+    equivalent_d = round(sphere_d + cylinder_d / 2, 4)
+    args = (sphere_d, cylinder_d, equivalent_d, zone)
     if zone not in OPTICAL_ZONES_MM:
-        return _fail(sphere_d, zone, "Zona óptica no disponible en la tabla.")
-    if sphere_d == 0:
-        return _fail(sphere_d, zone, "Introduce una esfera distinta de 0.")
+        return _fail(*args, "Zona óptica no disponible en la tabla.")
+    if equivalent_d == 0:
+        return _fail(*args, "La esfera equivalente es 0: introduce una graduación distinta de 0.")
 
-    magnitude = abs(sphere_d)
+    magnitude = abs(equivalent_d)
+    used = f"esfera equivalente {_fmt_d(equivalent_d)} D" if cylinder_d else f"{_fmt_d(equivalent_d)} D"
     if magnitude > MAX_SPHERE_D:
-        return _fail(sphere_d, zone, f"Fuera de tabla (máximo ±{MAX_SPHERE_D} D).")
+        return _fail(*args, f"Fuera de tabla ({used}; máximo ±{MAX_SPHERE_D} D).")
     if magnitude < 1:
-        return _fail(sphere_d, zone, "La tabla no tiene datos por debajo de ±1 D.")
+        return _fail(*args, f"La tabla no tiene datos por debajo de ±1 D ({used}).")
 
-    sign = 1 if sphere_d > 0 else -1
+    sign = 1 if equivalent_d > 0 else -1
     low, high = math.floor(magnitude), math.ceil(magnitude)
     row_low = _BY_SPHERE[sign * low][zone]
     row_high = _BY_SPHERE[sign * high][zone]
     if row_low is None or row_high is None:
         return _fail(
-            sphere_d,
-            zone,
-            f"Sin datos en la tabla para {_fmt_d(sphere_d)} D con zona óptica {str(zone).replace('.', ',')} mm.",
+            *args,
+            f"Sin datos en la tabla para {used} con zona óptica {str(zone).replace('.', ',')} mm.",
         )
 
     if low == high:
         time_s, ablation_um, zone_mm = row_low
-        return LaserAblation(True, sphere_d, zone, ablation_um, time_s, zone_mm, False)
+        return LaserAblation(
+            True, sphere_d, cylinder_d, equivalent_d, zone, ablation_um, time_s, zone_mm, False
+        )
 
     fraction = magnitude - low
     ablation_um = math.ceil(row_low[1] + (row_high[1] - row_low[1]) * fraction)
-    return LaserAblation(True, sphere_d, zone, ablation_um, None, "", True)
+    return LaserAblation(True, sphere_d, cylinder_d, equivalent_d, zone, ablation_um, None, "", True)

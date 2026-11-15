@@ -51,3 +51,18 @@ def test_out_of_table_values_are_not_found_and_explain_why(sphere, zone):
     assert result.found is False
     assert result.ablation_um == 0
     assert result.message
+
+
+def test_cylinder_is_folded_into_the_spherical_equivalent():
+    result = teneo_max_ablation(-3, 6.0, cylinder_d=-2)  # -4 D equivalentes
+
+    assert result.found is True
+    assert result.equivalent_d == -4
+    assert result.ablation_um == 57
+
+
+def test_equivalent_of_zero_is_not_found():
+    result = teneo_max_ablation(-1, 6.0, cylinder_d=2)
+
+    assert result.found is False
+    assert "equivalente" in result.message

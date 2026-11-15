@@ -9,8 +9,10 @@ Ambas vías reutilizan el mismo core clínico en `shared/`.
 
 ## Qué calcula
 
-- **Seguridad:** ablación %, lecho residual (LER) en µm y %, paquimetría post-op. En LASIK y SMILE se descuenta siempre el flap/cap (120 µm por defecto).
-- **Tabla del láser Teneo** (`shared/teneo.py`): eligiendo zona óptica (6 o 6,5 mm) e introduciendo la esfera, se muestra la ablación máxima de la tabla y se rellena la ablación planificada. Entre dos dioptrías enteras se interpola y se redondea hacia arriba; fuera de tabla (menos de ±1 D, más de ±10 D o sin dato) lo indica.
+- **Técnicas:** LASIK y PRK. En LASIK se resta siempre el flap de 120 µm del lecho residual; en PRK no hay flap y no se resta nada.
+- **Entrada por graduación:** zona óptica (6 o 6,5 mm) + esfera (+ cilindro opcional). La ablación sale de la tabla del láser Teneo (`shared/teneo.py`). Con cilindro se usa la esfera equivalente (esfera + cilindro/2). Entre dos dioptrías enteras se interpola y se redondea hacia arriba; fuera de tabla (menos de ±1 D, más de ±10 D o sin dato) lo indica.
+- **Entrada por ablación directa:** se escribe la ablación en µm.
+- **Seguridad:** ablación %, lecho residual (LER) en µm y %, paquimetría post-op.
 
 ## Usar online
 

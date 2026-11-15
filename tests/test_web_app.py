@@ -19,31 +19,59 @@ def test_config_endpoint_exposes_procedures():
     assert response.status_code == 200
     payload = response.json()
     assert payload["app_name"] == "AblacionCorneal"
-    assert [item["value"] for item in payload["procedure_choices"]] == [
-        "surface",
-        "lasik",
-        "smile",
-    ]
+    assert [item["value"] for item in payload["procedure_choices"]] == ["lasik", "prk"]
 
 
-def test_compute_endpoint_uses_shared_calculator():
-    response = client.post(
-        "/api/compute",
-        json={
-            "paqui_preop_um": 500,
-            "ablation_um": 80,
-            "suspicious": False,
-            "procedure": "lasik",
-            "flap_cap_um": 110,
-        },
-    )
+def post(**body):
+    return client.post("/api/compute", json={"paqui_preop_um": 540, **body}).json()
 
-    assert response.status_code == 200
-    payload = response.json()
+
+def test_compute_lasik_with_direct_ablation_subtracts_flap():
+    payload = post(ablation_um=80, procedure="lasik")
+
     assert payload["valid"] is True
-    assert payload["subtract_um"] == 110
-    assert payload["ler_um"] == 310
-    assert payload["overall_status"] == "warning"
+    assert payload["subtract_um"] == 120
+    assert payload["ler_um"] == 340
+
+
+def test_compute_prk_does_not_subtract_flap():
+    payload = post(ablation_um=80, procedure="prk")
+
+    assert payload["subtract_um"] == 0
+    assert payload["ler_um"] == 460
+
+
+def test_compute_from_graduation_uses_the_teneo_table():
+    payload = post(sphere_d=-3, optical_zone_mm=6.5, procedure="lasik")
+
+    assert payload["ablation_um"] == 52
+    assert payload["laser"]["zone_mm"] == "7.8 x 7.8"
+    assert payload["ler_um"] == 540 - 120 - 52
+
+
+def test_compute_from_graduation_with_cylinder():
+    payload = post(sphere_d=-3, cylinder_d=-2, optical_zone_mm=6.0, procedure="prk")
+
+    assert payload["laser"]["equivalent_d"] == -4
+    assert payload["ablation_um"] == 57
+
+
+def test_compute_reports_missing_table_data():
+    payload = post(sphere_d=9, optical_zone_mm=6.5)
+
+    assert payload["valid"] is False
+    assert "Sin datos" in payload["errors"][0]
+
+
+def test_compute_needs_graduation_or_ablation():
+    payload = post()
+
+    assert payload["valid"] is False
+
+
+def test_smile_and_surface_are_no_longer_accepted():
+    assert client.post("/api/compute", json={"paqui_preop_um": 540, "ablation_um": 80, "procedure": "smile"}).status_code == 422
+    assert client.post("/api/compute", json={"paqui_preop_um": 540, "ablation_um": 80, "procedure": "surface"}).status_code == 422
 
 
 def test_index_serves_web_app():
@@ -55,43 +83,23 @@ def test_index_serves_web_app():
     assert "Descargar app Mac" in response.text
 
 
-def test_web_ui_has_no_legacy_toggle_and_defaults_flap():
-    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    assert "legacy" not in html.lower()
-    assert 'value="120"' in html
+def test_web_ui_has_no_legacy_smile_or_flap_field():
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8").lower()
+    js = (STATIC_DIR / "app.js").read_text(encoding="utf-8").lower()
+
+    for text in (html, js):
+        assert "legacy" not in text
+        assert "smile" not in text
+    assert "flap-cap-input" not in html
+    assert 'id="optical-zone-select"' in html
+    assert 'id="sphere-input"' in html
+    assert 'id="cylinder-input"' in html
 
 
-def test_old_clients_sending_legacy_mode_still_get_flap_subtracted():
-    response = client.post(
-        "/api/compute",
-        json={"paqui_preop_um": 540, "ablation_um": 80, "procedure": "lasik", "flap_cap_um": 120, "legacy_mode": True},
-    )
-    assert response.json()["ler_um"] == 340
-
-
-def test_config_exposes_flap_defaults():
+def test_config_exposes_defaults():
     data = client.get("/api/config").json()
-    assert data["default_flap_cap_um"] == 120
+
     assert data["default_procedure"] == "lasik"
-
-
-def test_laser_ablation_endpoint_returns_table_value():
-    payload = client.get("/api/laser-ablation", params={"sphere_d": -3, "optical_zone_mm": 6.5}).json()
-
-    assert payload["found"] is True
-    assert payload["ablation_um"] == 52
-    assert payload["zone_mm"] == "7.8 x 7.8"
-
-
-def test_laser_ablation_endpoint_reports_missing_data():
-    payload = client.get("/api/laser-ablation", params={"sphere_d": 9, "optical_zone_mm": 6.5}).json()
-
-    assert payload["found"] is False
-    assert "Sin datos" in payload["message"]
-
-
-def test_config_exposes_optical_zones():
-    data = client.get("/api/config").json()
-
+    assert data["flap_um"] == 120
     assert data["optical_zone_choices"] == [6.0, 6.5]
     assert data["default_optical_zone_mm"] == 6.0

@@ -56,13 +56,11 @@
               </label>
 
               <label class="field">
-                <span>Zona óptica (mm)</span>
-                <select id="optical-zone-select"></select>
-              </label>
-
-              <label class="field field--conditional" id="flap-cap-field">
-                <span id="flap-cap-label">Espesor flap/cap (µm)</span>
-                <input id="flap-cap-input" type="number" min="0" max="2000" inputmode="numeric" placeholder="120" value="120">
+                <span>Entrada</span>
+                <select id="input-mode-select">
+                  <option value="refraction" selected>Por graduación</option>
+                  <option value="direct">Ablación directa</option>
+                </select>
               </label>
             </div>
 
@@ -79,12 +77,22 @@
                 <input id="paqui-input" type="number" min="0" max="2000" inputmode="numeric" placeholder="500">
               </label>
 
-              <label class="field">
+              <label class="field" data-mode="refraction">
+                <span>Zona óptica (mm)</span>
+                <select id="optical-zone-select"></select>
+              </label>
+
+              <label class="field" data-mode="refraction">
                 <span>Esfera (D)</span>
                 <input id="sphere-input" type="number" min="-10" max="10" step="0.25" inputmode="decimal" placeholder="-3.00">
               </label>
 
-              <label class="field">
+              <label class="field" data-mode="refraction">
+                <span>Cilindro (D) · opcional</span>
+                <input id="cylinder-input" type="number" min="-15" max="15" step="0.25" inputmode="decimal" placeholder="0.00">
+              </label>
+
+              <label class="field" data-mode="direct">
                 <span>Ablación planificada (µm)</span>
                 <input id="ablation-input" type="number" min="0" max="2000" inputmode="numeric" placeholder="90">
               </label>

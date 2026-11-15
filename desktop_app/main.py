@@ -28,17 +28,16 @@ from PySide6.QtWidgets import (
 
 from desktop_app.styles import apply_app_style, create_card
 from shared.calculator import (
-    DEFAULT_FLAP_CAP_UM,
     DEFAULT_PROCEDURE,
+    FLAP_THICKNESS_UM,
     PROCEDURE_CHOICES,
     WARN_PAQUI_HIGH,
     WARN_PAQUI_LOW,
     EyeInput,
     compute_result,
-    procedure_supports_flap_cap,
-    procedure_tissue_label,
+    procedure_has_flap,
 )
-from shared.teneo import DEFAULT_OPTICAL_ZONE_MM, OPTICAL_ZONES_MM, LaserAblation, teneo_max_ablation
+from shared.teneo import DEFAULT_OPTICAL_ZONE_MM, OPTICAL_ZONES_MM, LaserAblation
 
 
 def _format_number(value: float) -> str:
@@ -163,15 +162,15 @@ class SegmentedBar(QFrame):
         layout.addWidget(self.seg_ablation)
         layout.addWidget(self.seg_residual)
 
-    def update_segments(self, flap_cap: int, ablation: int, residual: int) -> None:
-        total = flap_cap + ablation + residual
+    def update_segments(self, flap: int, ablation: int, residual: int) -> None:
+        total = flap + ablation + residual
         layout = self.layout()
         if total == 0:
             layout.setStretch(0, 1)
             layout.setStretch(1, 1)
             layout.setStretch(2, 1)
             return
-        layout.setStretch(0, max(0, flap_cap))
+        layout.setStretch(0, max(0, flap))
         layout.setStretch(1, max(0, ablation))
         layout.setStretch(2, max(0, residual))
 
@@ -218,6 +217,7 @@ class MainWindow(QMainWindow):
         self.decision_card = self._build_decision_card()
         container_layout.addWidget(self.decision_card)
 
+        self._sync_configuration_ui()
         self.update_results()
         self._setup_shortcuts()
 
@@ -240,26 +240,14 @@ class MainWindow(QMainWindow):
         )
         self.settings_row_layout.addWidget(technique_block)
 
-        zone_block, self.zone_combo, _ = self._combo_block(
-            "Zona óptica (mm)",
-            [(zone, _format_number(zone)) for zone in OPTICAL_ZONES_MM],
+        mode_block, self.mode_combo, _ = self._combo_block(
+            "Entrada",
+            [("refraction", "Por graduación"), ("direct", "Ablación directa")],
         )
-        self.zone_combo.setCurrentIndex(
-            max(0, self.zone_combo.findData(DEFAULT_OPTICAL_ZONE_MM))
-        )
-        self.settings_row_layout.addWidget(zone_block)
-
-        (
-            self.flap_cap_widget,
-            self.flap_cap_edit,
-            self.flap_cap_field_label,
-        ) = self._field_block("Espesor flap/cap (µm)", str(DEFAULT_FLAP_CAP_UM))
-        self.flap_cap_edit.setValidator(QIntValidator(0, 2000, self))
-        self.flap_cap_edit.setText(str(DEFAULT_FLAP_CAP_UM))
+        self.settings_row_layout.addWidget(mode_block)
         self.technique_combo.setCurrentIndex(
             max(0, self.technique_combo.findData(DEFAULT_PROCEDURE))
         )
-        self.settings_row_layout.addWidget(self.flap_cap_widget)
         layout.addLayout(self.settings_row_layout)
 
         self.settings_hint_label = QLabel("")
@@ -267,9 +255,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.settings_hint_label)
 
         self.technique_combo.currentIndexChanged.connect(self._on_configuration_changed)
-        self.flap_cap_edit.textChanged.connect(self.update_results)
+        self.mode_combo.currentIndexChanged.connect(self._on_configuration_changed)
 
-        self._sync_configuration_ui()
         return card
 
     def _build_input_card(self) -> QFrame:
@@ -289,19 +276,31 @@ class MainWindow(QMainWindow):
         self.paqui_edit.setValidator(QIntValidator(0, 2000, self))
         self.input_row_layout.addWidget(paqui_block)
 
-        sphere_block, self.sphere_edit, _ = self._field_block("Esfera (D)", "-3.00")
-        sphere_validator = QDoubleValidator(-10.0, 10.0, 2, self)
-        sphere_validator.setNotation(QDoubleValidator.StandardNotation)
-        sphere_validator.setLocale(QLocale.c())
-        self.sphere_edit.setValidator(sphere_validator)
-        self.input_row_layout.addWidget(sphere_block)
+        self.zone_block, self.zone_combo, _ = self._combo_block(
+            "Zona óptica (mm)",
+            [(zone, _format_number(zone)) for zone in OPTICAL_ZONES_MM],
+        )
+        self.zone_combo.setCurrentIndex(
+            max(0, self.zone_combo.findData(DEFAULT_OPTICAL_ZONE_MM))
+        )
+        self.input_row_layout.addWidget(self.zone_block)
 
-        ablation_block, self.ablation_edit, _ = self._field_block(
+        self.sphere_block, self.sphere_edit, _ = self._field_block("Esfera (D)", "-3.00")
+        self.sphere_edit.setValidator(self._diopter_validator(-10.0, 10.0))
+        self.input_row_layout.addWidget(self.sphere_block)
+
+        self.cylinder_block, self.cylinder_edit, _ = self._field_block(
+            "Cilindro (D) · opcional", "0.00"
+        )
+        self.cylinder_edit.setValidator(self._diopter_validator(-15.0, 15.0))
+        self.input_row_layout.addWidget(self.cylinder_block)
+
+        self.ablation_block, self.ablation_edit, _ = self._field_block(
             "Ablación planificada (µm)",
             "90",
         )
         self.ablation_edit.setValidator(QIntValidator(0, 2000, self))
-        self.input_row_layout.addWidget(ablation_block)
+        self.input_row_layout.addWidget(self.ablation_block)
 
         layout.addLayout(self.input_row_layout)
 
@@ -321,8 +320,9 @@ class MainWindow(QMainWindow):
         self.error_label.setObjectName("error")
         layout.addWidget(self.error_label)
 
-        self.sphere_edit.textChanged.connect(self._update_laser)
-        self.zone_combo.currentIndexChanged.connect(self._update_laser)
+        self.sphere_edit.textChanged.connect(self.update_results)
+        self.cylinder_edit.textChanged.connect(self.update_results)
+        self.zone_combo.currentIndexChanged.connect(self.update_results)
         self.paqui_edit.textChanged.connect(self.update_results)
         self.ablation_edit.textChanged.connect(self.update_results)
         self.suspicious_toggle.stateChanged.connect(self.update_results)
@@ -477,64 +477,98 @@ class MainWindow(QMainWindow):
         layout.addWidget(combo)
         return wrapper, combo, label
 
-    def _current_zone(self) -> float:
-        return float(self.zone_combo.currentData())
-
-    def _current_laser(self) -> LaserAblation | None:
-        text = self.sphere_edit.text().strip().replace(",", ".")
-        try:
-            sphere = float(text)
-        except ValueError:
-            return None
-        return teneo_max_ablation(sphere, self._current_zone())
-
-    def _update_laser(self, *_args) -> None:
-        laser = self._current_laser()
-        if laser is None:
-            self.laser_label.setText("")
-            return
-        if not laser.found:
-            self.laser_label.setText(laser.message)
-            return
-
-        details = (
-            "interpolado entre dos filas de la tabla"
-            if laser.interpolated
-            else f"zona {laser.zone_mm.replace('.', ',')} mm · {laser.time_s} s"
-        )
-        self.laser_label.setText(
-            f"Teneo · ZO {_format_number(laser.optical_zone_mm)} mm · "
-            f"{_format_d(laser.sphere_d)} D → ablación máx. {laser.ablation_um} µm ({details})."
-        )
-        self.ablation_edit.setText(str(laser.ablation_um))
+    @staticmethod
+    def _diopter_validator(minimum: float, maximum: float) -> QDoubleValidator:
+        validator = QDoubleValidator(minimum, maximum, 2)
+        validator.setNotation(QDoubleValidator.StandardNotation)
+        validator.setLocale(QLocale.c())
+        return validator
 
     def _current_procedure(self) -> str:
         return str(self.technique_combo.currentData())
 
-    def _segment_tissue_label(self) -> str:
-        return procedure_tissue_label(self._current_procedure())
+    def _current_mode(self) -> str:
+        return str(self.mode_combo.currentData())
 
     def _on_configuration_changed(self, *_args) -> None:
         self._sync_configuration_ui()
         self.update_results()
 
     def _sync_configuration_ui(self) -> None:
-        procedure = self._current_procedure()
-        tissue_label = self._segment_tissue_label()
-        needs_flap_cap = procedure_supports_flap_cap(procedure)
+        refraction = self._current_mode() == "refraction"
+        for block in (self.zone_block, self.sphere_block, self.cylinder_block):
+            block.setVisible(refraction)
+        self.ablation_block.setVisible(not refraction)
 
-        self.flap_cap_field_label.setText(f"Espesor {tissue_label.lower()} (µm)")
-        self.flap_cap_edit.setPlaceholderText(str(DEFAULT_FLAP_CAP_UM))
-        self.flap_cap_widget.setVisible(needs_flap_cap)
-
-        if procedure_supports_flap_cap(procedure):
+        if procedure_has_flap(self._current_procedure()):
             self.settings_hint_label.setText(
-                f"Se descontará {tissue_label.lower()} para calcular el lecho residual."
+                f"LASIK: se resta el flap de {FLAP_THICKNESS_UM} µm del lecho residual."
             )
         else:
-            self.settings_hint_label.setText(
-                "Técnica de superficie: no descuenta flap/cap en el cálculo."
+            self.settings_hint_label.setText("PRK: no hay flap, no se resta nada.")
+
+    @staticmethod
+    def _to_float(text: str) -> float | None:
+        try:
+            return float(text.strip().replace(",", "."))
+        except ValueError:
+            return None
+
+    def _build_eye_input(self) -> tuple[EyeInput | None, str]:
+        paqui_text = self.paqui_edit.text().strip()
+        if not paqui_text:
+            return None, "Introduce paquimetría preop."
+
+        base = {
+            "paqui_preop_um": int(paqui_text),
+            "suspicious": self.suspicious_toggle.isChecked(),
+            "procedure": self._current_procedure(),
+        }
+        if self._current_mode() == "refraction":
+            sphere = self._to_float(self.sphere_edit.text())
+            if sphere is None:
+                return None, "Introduce la esfera."
+            return (
+                EyeInput(
+                    **base,
+                    sphere_d=sphere,
+                    cylinder_d=self._to_float(self.cylinder_edit.text()) or 0.0,
+                    optical_zone_mm=float(self.zone_combo.currentData()),
+                ),
+                "",
             )
+
+        ablation_text = self.ablation_edit.text().strip()
+        if not ablation_text:
+            return None, "Introduce la ablación."
+        return EyeInput(**base, ablation_um=int(ablation_text)), ""
+
+    @staticmethod
+    def _describe_refraction(laser: LaserAblation) -> str:
+        if not laser.cylinder_d:
+            return f"{_format_d(laser.sphere_d)} D"
+        return (
+            f"{_format_d(laser.sphere_d)} / {_format_d(laser.cylinder_d)} "
+            f"(esfera equivalente {_format_d(laser.equivalent_d)} D)"
+        )
+
+    def _laser_summary(self, laser: LaserAblation | None) -> str:
+        if laser is None or not laser.found:
+            return ""
+        details = (
+            "interpolado entre dos filas de la tabla"
+            if laser.interpolated
+            else f"zona {laser.zone_mm.replace('.', ',')} mm · {laser.time_s} s"
+        )
+        return (
+            f"Teneo · ZO {_format_number(laser.optical_zone_mm)} mm · "
+            f"{self._describe_refraction(laser)} → ablación {laser.ablation_um} µm ({details})."
+        )
+
+    @staticmethod
+    def _segment_text(flap: int, ablation: int, residual: int) -> str:
+        flap_text = f"Flap {flap} µm · " if flap > 0 else ""
+        return f"{flap_text}Ablación {ablation} µm · Residual {residual} µm"
 
     def _setup_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+L"), self, activated=self.ablation_edit.setFocus)
@@ -558,41 +592,28 @@ class MainWindow(QMainWindow):
             col = index % columns
             self.chips_layout.addWidget(chip, row, col)
 
-    def _parse_inputs(self) -> tuple[int | None, int, int]:
-        paqui_text = self.paqui_edit.text().strip()
-        ablation_text = self.ablation_edit.text().strip()
-        flap_cap_text = self.flap_cap_edit.text().strip()
-
-        paqui = int(paqui_text) if paqui_text else None
-        ablation = int(ablation_text) if ablation_text else 0
-        flap_cap = int(flap_cap_text) if flap_cap_text else 0
-        return paqui, ablation, flap_cap
-
     def update_results(self) -> None:
-        paqui, ablation, flap_cap = self._parse_inputs()
-        if paqui is None:
+        eye_input, message = self._build_eye_input()
+        if eye_input is None:
             self.set_status_badge("invalid")
-            self.error_label.setText("Introduce paquimetría preop.")
+            self.error_label.setText(message)
             self.hint_label.setText("")
+            self.laser_label.setText("")
             self._set_placeholders()
             return
 
-        eye_input = EyeInput(
-            paqui_preop_um=paqui,
-            ablation_um=ablation,
-            suspicious=self.suspicious_toggle.isChecked(),
-            procedure=self._current_procedure(),
-            flap_cap_um=flap_cap,
-        )
+        paqui = eye_input.paqui_preop_um
         result = compute_result(eye_input)
 
         if not result.valid:
             self.set_status_badge("invalid")
             self.error_label.setText(result.errors[0] if result.errors else "Entradas inconsistentes.")
             self.hint_label.setText("")
+            self.laser_label.setText("")
             self._set_placeholders()
             return
 
+        self.laser_label.setText(self._laser_summary(result.laser))
         self.error_label.setText("")
         self.set_status_badge(result.overall_status)
 
@@ -616,9 +637,9 @@ class MainWindow(QMainWindow):
         self.margin_label.setText(f"Margen: {result.margin_um:+d} µm")
         self.limit_label.setText(f"Limita: {result.limit_factor}")
 
-        self.segmented_bar.update_segments(result.subtract_um, ablation, result.ler_um)
+        self.segmented_bar.update_segments(result.subtract_um, result.ablation_um, result.ler_um)
         self.seg_labels.setText(
-            f"{result.tissue_label} {result.subtract_um} µm · Ablación {ablation} µm · Residual {result.ler_um} µm"
+            self._segment_text(result.subtract_um, result.ablation_um, result.ler_um)
         )
 
         self.rule_ablation.update_row(
@@ -650,9 +671,8 @@ class MainWindow(QMainWindow):
         self.margin_label.setText("Margen: –")
         self.limit_label.setText("Limita: –")
         self.segmented_bar.update_segments(0, 0, 0)
-        self.seg_labels.setText(
-            f"{self._segment_tissue_label()} 0 µm · Ablación 0 µm · Residual 0 µm"
-        )
+        flap = FLAP_THICKNESS_UM if procedure_has_flap(self._current_procedure()) else 0
+        self.seg_labels.setText(self._segment_text(flap, 0, 0))
         self.rule_ablation.update_row("neutral", "–", "")
         self.rule_ler_um.update_row("neutral", "–", "")
         self.rule_ler_pct.update_row("neutral", "–", "")
@@ -681,23 +701,15 @@ class MainWindow(QMainWindow):
     def reset_inputs(self) -> None:
         self.paqui_edit.setText("")
         self.ablation_edit.setText("")
-        self.flap_cap_edit.setText(str(DEFAULT_FLAP_CAP_UM))
         self.sphere_edit.setText("")
-        self.laser_label.setText("")
+        self.cylinder_edit.setText("")
         self.suspicious_toggle.setChecked(False)
         self.update_results()
 
     def copy_summary(self) -> None:
-        paqui, ablation, flap_cap = self._parse_inputs()
-        if paqui is None:
+        eye_input, _message = self._build_eye_input()
+        if eye_input is None:
             return
-        eye_input = EyeInput(
-            paqui_preop_um=paqui,
-            ablation_um=ablation,
-            suspicious=self.suspicious_toggle.isChecked(),
-            procedure=self._current_procedure(),
-            flap_cap_um=flap_cap,
-        )
         result = compute_result(eye_input)
         if not result.valid:
             return
@@ -709,19 +721,19 @@ class MainWindow(QMainWindow):
             if result.overall_status == "warning"
             else "No cumple"
         )
-        laser = self._current_laser()
         laser_text = ""
-        if laser is not None and laser.found:
-            interpolated = ", interpolado" if laser.interpolated else ""
+        if result.laser is not None:
+            interpolated = ", interpolado" if result.laser.interpolated else ""
             laser_text = (
-                f"esfera {_format_d(laser.sphere_d)} D, ZO {_format_number(laser.optical_zone_mm)} mm "
-                f"(Teneo {laser.ablation_um} µm{interpolated}), "
+                f"graduación {self._describe_refraction(result.laser)}, "
+                f"ZO {_format_number(result.laser.optical_zone_mm)} mm (Teneo{interpolated}), "
             )
+        flap_text = f"flap {result.subtract_um} µm" if result.subtract_um else "sin flap"
         summary = (
-            f"{result.procedure_label}, {laser_text}paqui preop {paqui} µm, ablación {ablation} µm "
-            f"({result.ablation_pct:.1f}%), LER {result.ler_um} µm "
-            f"({result.ler_pct:.1f}%), post-op {result.postop_paqui_um} µm, "
-            f"{result.tissue_label.lower()} efectivo {result.subtract_um} µm, "
+            f"{result.procedure_label}, {laser_text}paqui preop {eye_input.paqui_preop_um} µm, "
+            f"ablación {result.ablation_um} µm ({result.ablation_pct:.1f}%), "
+            f"LER {result.ler_um} µm ({result.ler_pct:.1f}%), "
+            f"post-op {result.postop_paqui_um} µm, {flap_text}, "
             f"estado {status_label}, limita {result.limit_factor}, "
             f"máx segura {result.ablation_max_safe_um} µm, margen {result.margin_um:+d} µm."
         )

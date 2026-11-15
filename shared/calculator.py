@@ -4,6 +4,8 @@ import math
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
+from .teneo import DEFAULT_OPTICAL_ZONE_MM, LaserAblation, teneo_max_ablation
+
 MAX_ABLATION_PCT = 20.0
 LER_MIN_UM = 300
 LER_PCT_NORMAL = 60.0
@@ -13,39 +15,43 @@ WARN_PAQUI_LOW = 470
 WARN_PAQUI_HIGH = 500
 MARGIN_UM = 20
 MARGIN_PCT = 2.0
-DEFAULT_FLAP_CAP_UM = 120
+FLAP_THICKNESS_UM = 120
 DEFAULT_PROCEDURE = "lasik"
 
 RuleStatus = Literal["pass", "warn", "fail"]
 OverallStatus = Literal["ok", "warning", "fail", "invalid"]
-ProcedureType = Literal["surface", "lasik", "smile"]
+ProcedureType = Literal["lasik", "prk"]
 
 PROCEDURE_LABELS: dict[ProcedureType, str] = {
-    "surface": "Superficie (PRK/PTK)",
     "lasik": "LASIK",
-    "smile": "SMILE",
-}
-PROCEDURE_TISSUE_LABELS: dict[ProcedureType, str | None] = {
-    "surface": None,
-    "lasik": "Flap",
-    "smile": "Cap",
+    "prk": "PRK",
 }
 PROCEDURE_CHOICES: tuple[tuple[ProcedureType, str], ...] = tuple(PROCEDURE_LABELS.items())
 
 
 @dataclass
 class EyeInput:
+    """Caso a evaluar.
+
+    La ablación se da directamente (`ablation_um`) o se calcula con la tabla del láser a partir
+    de la graduación (`sphere_d` + `cylinder_d`) y la zona óptica; si hay esfera, manda la tabla.
+    """
+
     paqui_preop_um: int
-    ablation_um: int
+    ablation_um: int | None = None
     suspicious: bool = False
-    procedure: ProcedureType = "surface"
-    flap_cap_um: int = 0
+    procedure: ProcedureType = "lasik"
+    sphere_d: float | None = None
+    cylinder_d: float = 0.0
+    optical_zone_mm: float = DEFAULT_OPTICAL_ZONE_MM
 
 
 @dataclass
 class EyeResult:
     valid: bool
     errors: list[str] = field(default_factory=list)
+    ablation_um: int = 0
+    laser: LaserAblation | None = None
     ablation_pct: float = 0.0
     subtract_um: int = 0
     ler_um: int = 0
@@ -63,10 +69,8 @@ class EyeResult:
     limit_factor: str = ""
     ablation_max_safe_um: int = 0
     margin_um: int = 0
-    procedure: ProcedureType = "surface"
-    procedure_label: str = "Superficie (PRK/PTK)"
-    tissue_label: str = "Flap/Cap"
-    flap_cap_um: int = 0
+    procedure: ProcedureType = "lasik"
+    procedure_label: str = "LASIK"
 
 
 def eye_result_to_dict(result: EyeResult) -> dict[str, object]:
@@ -83,59 +87,60 @@ def _status_from_margin(ok: bool, margin_um: float | None, margin_pct: float | N
     return "pass"
 
 
-def procedure_supports_flap_cap(procedure: ProcedureType) -> bool:
-    return PROCEDURE_TISSUE_LABELS[procedure] is not None
+def procedure_has_flap(procedure: ProcedureType) -> bool:
+    return procedure == "lasik"
 
 
 def procedure_label(procedure: ProcedureType) -> str:
     return PROCEDURE_LABELS[procedure]
 
 
-def procedure_tissue_label(procedure: ProcedureType) -> str:
-    return PROCEDURE_TISSUE_LABELS[procedure] or "Flap/Cap"
+def flap_um(procedure: ProcedureType) -> int:
+    """Micras que se restan del lecho por el flap: 120 en LASIK, 0 en PRK."""
+    return FLAP_THICKNESS_UM if procedure_has_flap(procedure) else 0
 
 
-def _effective_subtract_um(eye_input: EyeInput) -> int:
-    if not procedure_supports_flap_cap(eye_input.procedure):
-        return 0
-    return eye_input.flap_cap_um
+def _resolve_ablation(eye_input: EyeInput) -> tuple[int | None, LaserAblation | None, list[str]]:
+    """Ablación a usar: la de la tabla si hay graduación, o la dada directamente."""
+    if eye_input.sphere_d is not None:
+        laser = teneo_max_ablation(
+            eye_input.sphere_d, eye_input.optical_zone_mm, eye_input.cylinder_d
+        )
+        if not laser.found:
+            return None, laser, [laser.message]
+        return laser.ablation_um, laser, []
+    if eye_input.ablation_um is None:
+        return None, None, ["Introduce la graduación o la ablación."]
+    return eye_input.ablation_um, None, []
 
 
-def validate_eye_input(eye_input: EyeInput) -> list[str]:
+def validate_eye_input(eye_input: EyeInput, ablation_um: int | None = None) -> list[str]:
     errors: list[str] = []
     if eye_input.paqui_preop_um <= 0:
         errors.append("Introduce paquimetría preop.")
-    if eye_input.ablation_um < 0:
+    if ablation_um is None:
+        return errors
+    if ablation_um < 0:
         errors.append("Ablación no puede ser negativa.")
-    if eye_input.flap_cap_um < 0:
-        errors.append("Flap/Cap no puede ser negativo.")
-    if eye_input.paqui_preop_um > 0 and eye_input.ablation_um > eye_input.paqui_preop_um:
+    if eye_input.paqui_preop_um > 0 and ablation_um > eye_input.paqui_preop_um:
         errors.append("Entradas inconsistentes: ablación supera paquimetría preop.")
-    if procedure_supports_flap_cap(eye_input.procedure) and eye_input.flap_cap_um <= 0:
-        errors.append(
-            f"Introduce espesor de {procedure_tissue_label(eye_input.procedure).lower()}."
-        )
 
-    subtract_um = _effective_subtract_um(eye_input)
-    if eye_input.paqui_preop_um > 0 and subtract_um >= eye_input.paqui_preop_um:
-        errors.append("Entradas inconsistentes: flap/cap supera paquimetría preop.")
-    if (
-        eye_input.paqui_preop_um > 0
-        and subtract_um > 0
-        and eye_input.ablation_um + subtract_um > eye_input.paqui_preop_um
-    ):
-        errors.append("Entradas inconsistentes: flap/cap + ablación supera paquimetría preop.")
+    flap = flap_um(eye_input.procedure)
+    if eye_input.paqui_preop_um > 0 and flap >= eye_input.paqui_preop_um:
+        errors.append("Entradas inconsistentes: flap supera paquimetría preop.")
+    elif eye_input.paqui_preop_um > 0 and flap > 0 and ablation_um + flap > eye_input.paqui_preop_um:
+        errors.append("Entradas inconsistentes: flap + ablación supera paquimetría preop.")
     return errors
 
 
 def compute_result(eye_input: EyeInput) -> EyeResult:
-    errors = validate_eye_input(eye_input)
-    if errors:
-        return EyeResult(valid=False, errors=errors, overall_status="invalid")
+    ablation_um, laser, resolve_errors = _resolve_ablation(eye_input)
+    errors = resolve_errors + validate_eye_input(eye_input, ablation_um)
+    if errors or ablation_um is None:
+        return EyeResult(valid=False, errors=errors, overall_status="invalid", laser=laser)
 
-    subtract_um = _effective_subtract_um(eye_input)
+    subtract_um = flap_um(eye_input.procedure)
     paqui_preop_um = eye_input.paqui_preop_um
-    ablation_um = eye_input.ablation_um
 
     ablation_pct = (ablation_um / paqui_preop_um) * 100.0
     ler_um = paqui_preop_um - subtract_um - ablation_um
@@ -183,6 +188,8 @@ def compute_result(eye_input: EyeInput) -> EyeResult:
     return EyeResult(
         valid=True,
         errors=[],
+        ablation_um=ablation_um,
+        laser=laser,
         ablation_pct=ablation_pct,
         subtract_um=subtract_um,
         ler_um=ler_um,
@@ -202,6 +209,4 @@ def compute_result(eye_input: EyeInput) -> EyeResult:
         margin_um=margin_um,
         procedure=eye_input.procedure,
         procedure_label=procedure_label(eye_input.procedure),
-        tissue_label=procedure_tissue_label(eye_input.procedure),
-        flap_cap_um=eye_input.flap_cap_um,
     )
