@@ -131,3 +131,18 @@ def test_favicon_is_linked_and_served():
 
     for path in ("/assets/favicon.svg", "/assets/favicon-32.png", "/assets/apple-touch-icon.png"):
         assert client.get(path).status_code == 200
+
+
+def test_ler_is_paqui_minus_flap_minus_ablation_case_500_100():
+    """500 µm de paqui y 100 µm de ablación en LASIK: LER = 500 − 120 − 100 = 280 → no cumple."""
+    response = client.post(
+        "/api/compute",
+        json={"paqui_preop_um": 500, "ablation_um": 100, "procedure": "lasik"},
+    )
+    data = response.json()
+    assert data["ablation_pct"] == 20.0
+    assert data["rule_ablation_status"] != "fail"  # el 20 % justo es el límite, no lo supera
+    assert data["ler_um"] == 280
+    assert data["rule_ler_um_status"] == "fail"
+    assert data["rule_ler_pct_status"] == "fail"
+    assert data["overall_status"] == "fail"

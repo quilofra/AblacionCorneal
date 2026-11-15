@@ -402,6 +402,10 @@ class MainWindow(QMainWindow):
         self.seg_labels.setObjectName("hint")
         body_layout.addWidget(self.seg_labels)
 
+        self.ler_formula_label = QLabel("LER = paquimetría − flap (120 µm en LASIK) − ablación")
+        self.ler_formula_label.setObjectName("hint")
+        body_layout.addWidget(self.ler_formula_label)
+
         actions = QHBoxLayout()
         actions.addStretch()
         self.reset_button = QPushButton("Reset")
@@ -641,6 +645,17 @@ class MainWindow(QMainWindow):
         self.seg_labels.setText(
             self._segment_text(result.subtract_um, result.ablation_um, result.ler_um)
         )
+        paqui = result.ler_um + result.subtract_um + result.ablation_um
+        if result.subtract_um > 0:
+            self.ler_formula_label.setText(
+                f"LER = {paqui} (paqui) − {result.subtract_um} (flap) − "
+                f"{result.ablation_um} (ablación) = {result.ler_um} µm"
+            )
+        else:
+            self.ler_formula_label.setText(
+                f"LER = {paqui} (paqui) − {result.ablation_um} (ablación) = "
+                f"{result.ler_um} µm · PRK: sin flap"
+            )
 
         self.rule_ablation.update_row(
             result.rule_ablation_status,
@@ -673,6 +688,7 @@ class MainWindow(QMainWindow):
         self.segmented_bar.update_segments(0, 0, 0)
         flap = FLAP_THICKNESS_UM if procedure_has_flap(self._current_procedure()) else 0
         self.seg_labels.setText(self._segment_text(flap, 0, 0))
+        self.ler_formula_label.setText("LER = paquimetría − flap (120 µm en LASIK) − ablación")
         self.rule_ablation.update_row("neutral", "–", "")
         self.rule_ler_um.update_row("neutral", "–", "")
         self.rule_ler_pct.update_row("neutral", "–", "")

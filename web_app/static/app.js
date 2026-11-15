@@ -33,6 +33,7 @@ const elements = {
   marginText: document.querySelector("#margin-text"),
   limitText: document.querySelector("#limit-text"),
   segmentLabels: document.querySelector("#segment-labels"),
+  lerFormula: document.querySelector("#ler-formula"),
   segmentFlap: document.querySelector("#segment-flap"),
   segmentAblation: document.querySelector("#segment-ablation"),
   segmentResidual: document.querySelector("#segment-residual"),
@@ -116,6 +117,13 @@ function currentMode() {
   return elements.modeSelect.value === "direct" ? "direct" : "refraction";
 }
 
+function lerFormulaText(flap, ablation, ler) {
+  const paqui = ler + flap + ablation;
+  return flap > 0
+    ? `LER = ${paqui} (paqui) − ${flap} (flap) − ${ablation} (ablación) = ${ler} µm`
+    : `LER = ${paqui} (paqui) − ${ablation} (ablación) = ${ler} µm · PRK: sin flap`;
+}
+
 function segmentText(flap, ablation, residual) {
   const flapText = flap > 0 ? `Flap ${flap} µm · ` : "";
   return `${flapText}Ablación ${ablation} µm · Residual ${residual} µm`;
@@ -185,6 +193,7 @@ function resetResults() {
   elements.marginText.textContent = "Margen: –";
   elements.limitText.textContent = "Limita: –";
   elements.segmentLabels.textContent = segmentText(currentProcedure() === "lasik" ? FLAP_UM : 0, 0, 0);
+  elements.lerFormula.textContent = "LER = paquimetría − flap (120 µm en LASIK) − ablación";
   updateSegments(0, 0, 0);
   elements.laserText.textContent = "";
 
@@ -368,6 +377,7 @@ async function compute() {
   elements.marginText.textContent = `Margen: ${result.margin_um >= 0 ? "+" : ""}${result.margin_um} µm`;
   elements.limitText.textContent = `Limita: ${result.limit_factor}`;
   elements.segmentLabels.textContent = segmentText(result.subtract_um, result.ablation_um, result.ler_um);
+  elements.lerFormula.textContent = lerFormulaText(result.subtract_um, result.ablation_um, result.ler_um);
   updateSegments(result.subtract_um, result.ablation_um, result.ler_um);
 
   setRule(
