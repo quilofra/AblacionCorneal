@@ -87,12 +87,18 @@
 
               <label class="field" data-mode="refraction">
                 <span>Esfera (D)</span>
-                <input id="sphere-input" type="number" min="-10" max="10" step="0.25" inputmode="decimal" placeholder="-3.00">
+                <span class="signed-input">
+                  <input id="sphere-input" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="-3.00">
+                  <button type="button" class="sign-toggle" data-sign-for="sphere-input" aria-label="Cambiar signo de la esfera">+/−</button>
+                </span>
               </label>
 
               <label class="field" data-mode="refraction">
                 <span>Cilindro (D) · opcional</span>
-                <input id="cylinder-input" type="number" min="-15" max="15" step="0.25" inputmode="decimal" placeholder="0.00">
+                <span class="signed-input">
+                  <input id="cylinder-input" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0.00">
+                  <button type="button" class="sign-toggle" data-sign-for="cylinder-input" aria-label="Cambiar signo del cilindro">+/−</button>
+                </span>
               </label>
 
               <label class="field" data-mode="direct">
@@ -187,6 +193,14 @@
                     <span class="rule-icon">–</span>
                     <div>
                       <strong>LER %</strong>
+                      <span class="rule-threshold"></span>
+                    </div>
+                    <span class="rule-value">–</span>
+                  </article>
+                  <article class="rule-row is-hidden" id="rule-paqui-prk">
+                    <span class="rule-icon">–</span>
+                    <div>
+                      <strong>PRK: paqui preop ≥ 450-460 µm</strong>
                       <span class="rule-threshold"></span>
                     </div>
                     <span class="rule-value">–</span>

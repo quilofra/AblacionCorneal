@@ -432,6 +432,9 @@ class MainWindow(QMainWindow):
         rules_layout.addWidget(self.rule_ler_um)
         rules_layout.addWidget(self.rule_ler_pct)
         rules_layout.addWidget(self.rule_postop)
+        self.rule_paqui_prk = RuleRow("PRK: paqui preop ≥ 450-460 µm")
+        self.rule_paqui_prk.setVisible(False)
+        rules_layout.addWidget(self.rule_paqui_prk)
         self.rules_container.setVisible(False)
         body_layout.addWidget(self.rules_container)
 
@@ -509,7 +512,7 @@ class MainWindow(QMainWindow):
                 f"LASIK: se resta el flap de {FLAP_THICKNESS_UM} µm del lecho residual."
             )
         else:
-            self.settings_hint_label.setText("PRK: no hay flap, no se resta nada.")
+            self.settings_hint_label.setText("PRK: no hay flap, no se resta nada. Paquimetría preop de al menos 450-460 µm y final de 400 µm.")
 
     @staticmethod
     def _to_float(text: str) -> float | None:
@@ -677,6 +680,14 @@ class MainWindow(QMainWindow):
             f"{result.postop_paqui_um} µm",
             f">= {result.postop_um_threshold} µm",
         )
+        prk_status = result.rule_paqui_prk_status
+        self.rule_paqui_prk.setVisible(prk_status is not None)
+        if prk_status is not None:
+            self.rule_paqui_prk.update_row(
+                prk_status,
+                f"{result.postop_paqui_um + result.ablation_um} µm",
+                f">= {result.paqui_prk_ok_um} µm (mínimo {result.paqui_prk_min_um} µm)",
+            )
 
     def _set_placeholders(self) -> None:
         for chip in self.chips:
@@ -693,6 +704,7 @@ class MainWindow(QMainWindow):
         self.rule_ler_um.update_row("neutral", "–", "")
         self.rule_ler_pct.update_row("neutral", "–", "")
         self.rule_postop.update_row("neutral", "–", "")
+        self.rule_paqui_prk.setVisible(False)
 
     def _toggle_decision(self, checked: bool) -> None:
         self.decision_body.setVisible(checked)

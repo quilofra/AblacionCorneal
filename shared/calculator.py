@@ -11,6 +11,9 @@ LER_MIN_UM = 300
 LER_PCT_NORMAL = 60.0
 LER_PCT_SUSPICIOUS = 70.0
 POSTOP_MIN_UM = 400
+# PRK: paquimetría preop mínima. Por debajo de 450 no cumple; de 450 a 459 aviso; desde 460 correcto.
+PRK_PAQUI_MIN_UM = 450
+PRK_PAQUI_OK_UM = 460
 WARN_PAQUI_LOW = 470
 WARN_PAQUI_HIGH = 500
 MARGIN_UM = 20
@@ -61,10 +64,14 @@ class EyeResult:
     ablation_pct_threshold: float = MAX_ABLATION_PCT
     ler_um_threshold: int = LER_MIN_UM
     postop_um_threshold: int = POSTOP_MIN_UM
+    paqui_prk_min_um: int = PRK_PAQUI_MIN_UM
+    paqui_prk_ok_um: int = PRK_PAQUI_OK_UM
     rule_ablation_status: RuleStatus = "fail"
     rule_ler_um_status: RuleStatus = "fail"
     rule_ler_pct_status: RuleStatus = "fail"
     rule_postop_status: RuleStatus = "fail"
+    # Solo en PRK (None en LASIK): paquimetría preop de partida.
+    rule_paqui_prk_status: RuleStatus | None = None
     overall_status: OverallStatus = "invalid"
     limit_factor: str = ""
     ablation_max_safe_um: int = 0
@@ -164,10 +171,22 @@ def compute_result(eye_input: EyeInput) -> EyeResult:
     rule_ler_pct_status = _status_from_margin(ler_pct_ok, None, ler_pct_margin)
     rule_postop_status = _status_from_margin(postop_ok, postop_um_margin, None)
 
+    rule_paqui_prk_status: RuleStatus | None = None
+    if eye_input.procedure == "prk":
+        if paqui_preop_um < PRK_PAQUI_MIN_UM:
+            rule_paqui_prk_status = "fail"
+        elif paqui_preop_um < PRK_PAQUI_OK_UM:
+            rule_paqui_prk_status = "warn"
+        else:
+            rule_paqui_prk_status = "pass"
+
+    statuses = {rule_ablation_status, rule_ler_um_status, rule_ler_pct_status, rule_postop_status}
+    if rule_paqui_prk_status is not None:
+        statuses.add(rule_paqui_prk_status)
     overall_status: OverallStatus = "ok"
-    if "fail" in {rule_ablation_status, rule_ler_um_status, rule_ler_pct_status, rule_postop_status}:
+    if "fail" in statuses:
         overall_status = "fail"
-    elif "warn" in {rule_ablation_status, rule_ler_um_status, rule_ler_pct_status, rule_postop_status}:
+    elif "warn" in statuses:
         overall_status = "warning"
 
     abl_max_1 = (MAX_ABLATION_PCT / 100.0) * paqui_preop_um
@@ -203,6 +222,7 @@ def compute_result(eye_input: EyeInput) -> EyeResult:
         rule_ler_um_status=rule_ler_um_status,
         rule_ler_pct_status=rule_ler_pct_status,
         rule_postop_status=rule_postop_status,
+        rule_paqui_prk_status=rule_paqui_prk_status,
         overall_status=overall_status,
         limit_factor=limit_factor,
         ablation_max_safe_um=ablation_max_safe_um,

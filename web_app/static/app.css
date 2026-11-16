@@ -273,6 +273,34 @@ select {
   border-color: rgba(15, 118, 110, 0.34);
 }
 
+.signed-input {
+  display: flex;
+  gap: 8px;
+}
+
+.signed-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.sign-toggle {
+  flex: none;
+  min-width: 56px;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.34);
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rule-row.is-hidden {
+  display: none;
+}
+
 .field--toggle {
   align-content: end;
 }

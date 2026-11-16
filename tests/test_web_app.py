@@ -146,3 +146,19 @@ def test_ler_is_paqui_minus_flap_minus_ablation_case_500_100():
     assert data["rule_ler_um_status"] == "fail"
     assert data["rule_ler_pct_status"] == "fail"
     assert data["overall_status"] == "fail"
+
+
+def test_prk_low_paqui_is_flagged_in_api():
+    low = client.post("/api/compute", json={"paqui_preop_um": 445, "ablation_um": 30, "procedure": "prk"}).json()
+    assert low["rule_paqui_prk_status"] == "fail"
+    assert low["overall_status"] == "fail"
+    lasik = client.post("/api/compute", json={"paqui_preop_um": 445, "ablation_um": 30, "procedure": "lasik"}).json()
+    assert lasik["rule_paqui_prk_status"] is None
+
+
+def test_sphere_input_allows_minus_on_iphone():
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    # type=number + inputmode=decimal en iOS no tiene el signo menos: campo de texto + botón +/−
+    assert 'id="sphere-input" type="text"' in html
+    assert 'data-sign-for="sphere-input"' in html
+    assert 'data-sign-for="cylinder-input"' in html

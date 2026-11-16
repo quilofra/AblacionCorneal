@@ -155,3 +155,27 @@ def test_graduation_outside_the_table_is_invalid_with_reason():
 
     assert result.valid is False
     assert "Sin datos" in result.errors[0]
+
+
+def test_prk_paqui_preop_minimum_450_460():
+    from shared.calculator import EyeInput, compute_result
+
+    def prk(paqui, ablation=40):
+        return compute_result(EyeInput(paqui_preop_um=paqui, ablation_um=ablation, procedure="prk"))
+
+    assert prk(440).rule_paqui_prk_status == "fail"
+    assert prk(440).overall_status == "fail"
+    assert prk(449).rule_paqui_prk_status == "fail"
+    assert prk(450).rule_paqui_prk_status == "warn"
+    assert prk(459).rule_paqui_prk_status == "warn"
+    assert prk(460).rule_paqui_prk_status == "pass"
+    # el final sigue siendo ≥ 400 µm
+    assert prk(500, 100).postop_paqui_um == 400
+    assert prk(500, 120).rule_postop_status == "fail"
+
+
+def test_prk_paqui_rule_does_not_apply_to_lasik():
+    from shared.calculator import EyeInput, compute_result
+
+    result = compute_result(EyeInput(paqui_preop_um=440, ablation_um=10, procedure="lasik"))
+    assert result.rule_paqui_prk_status is None

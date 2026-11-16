@@ -67,6 +67,7 @@ const elements = {
     lerUm: document.querySelector("#rule-ler-um"),
     lerPct: document.querySelector("#rule-ler-pct"),
     postop: document.querySelector("#rule-postop"),
+    paquiPrk: document.querySelector("#rule-paqui-prk"),
   },
 };
 
@@ -117,6 +118,26 @@ function currentMode() {
   return elements.modeSelect.value === "direct" ? "direct" : "refraction";
 }
 
+// Admite coma decimal y el menos tipográfico (−): el teclado numérico del iPhone no tiene signo.
+function parseDecimal(text) {
+  const clean = String(text || "").trim().replace(/[−–—]/g, "-").replace(",", ".");
+  if (clean === "" || clean === "-" || clean === "+" || clean === ".") {
+    return Number.NaN;
+  }
+  return Number.parseFloat(clean);
+}
+
+function toggleSign(input) {
+  const value = input.value.trim().replace(/[−–—]/g, "-");
+  if (value.startsWith("-")) {
+    input.value = value.slice(1);
+  } else {
+    input.value = `-${value.replace(/^\+/, "")}`;
+  }
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+}
+
 function lerFormulaText(flap, ablation, ler) {
   const paqui = ler + flap + ablation;
   return flap > 0
@@ -138,7 +159,7 @@ function updateConfigurationUI() {
   elements.settingsHint.textContent =
     currentProcedure() === "lasik"
       ? `LASIK: se resta el flap de ${FLAP_UM} µm del lecho residual.`
-      : "PRK: no hay flap, no se resta nada.";
+      : "PRK: no hay flap, no se resta nada. Paquimetría preop de al menos 450-460 µm y final de 400 µm.";
 }
 
 function setStatusBadge(status) {
@@ -201,6 +222,8 @@ function resetResults() {
   setRule(elements.rules.lerUm, "neutral", "–", "");
   setRule(elements.rules.lerPct, "neutral", "–", "");
   setRule(elements.rules.postop, "neutral", "–", "");
+  elements.rules.paquiPrk.classList.add("is-hidden");
+  setRule(elements.rules.paquiPrk, "neutral", "–", "");
 }
 
 function buildSummary(result, paqui) {
@@ -283,13 +306,13 @@ async function compute() {
   };
 
   if (currentMode() === "refraction") {
-    const sphere = Number.parseFloat(elements.sphereInput.value);
+    const sphere = parseDecimal(elements.sphereInput.value);
     if (Number.isNaN(sphere)) {
       showFailure("Introduce la esfera.");
       return;
     }
     payload.sphere_d = sphere;
-    payload.cylinder_d = Number.parseFloat(elements.cylinderInput.value) || 0;
+    payload.cylinder_d = parseDecimal(elements.cylinderInput.value) || 0;
     payload.optical_zone_mm = Number.parseFloat(elements.zoneSelect.value);
   } else {
     const ablation = Number.parseInt(elements.ablationInput.value || "", 10);
@@ -404,6 +427,16 @@ async function compute() {
     `${result.postop_paqui_um} µm`,
     `>= ${result.postop_um_threshold} µm`,
   );
+  const prkRule = result.rule_paqui_prk_status;
+  elements.rules.paquiPrk.classList.toggle("is-hidden", !prkRule);
+  if (prkRule) {
+    setRule(
+      elements.rules.paquiPrk,
+      prkRule,
+      `${paqui} µm`,
+      `>= ${result.paqui_prk_ok_um} µm (mínimo ${result.paqui_prk_min_um} µm)`,
+    );
+  }
 
   elements.copySummaryButton.onclick = async () => {
     const button = elements.copySummaryButton;
@@ -467,6 +500,15 @@ async function bootstrap() {
   elements.repoLinks.forEach((link) => setLinkState(link, repoUrl));
   elements.downloadLinks.forEach((link) => setLinkState(link, downloadUrl));
   updateDesktopNote(downloadUrl);
+
+  document.querySelectorAll(".sign-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.signFor);
+      if (target) {
+        toggleSign(target);
+      }
+    });
+  });
 
   [
     elements.procedureSelect,
